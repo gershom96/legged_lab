@@ -203,6 +203,7 @@ class G1AmpEnvCfg(LocomotionAmpEnvCfg):
         # discriminator demostration observations
         
         self.observations.disc_demo.ref_root_local_rot_tan_norm.params["animation"] = ANIMATION_TERM_NAME
+        self.observations.disc_demo.ref_root_lin_vel_b.params["animation"] = ANIMATION_TERM_NAME
         self.observations.disc_demo.ref_root_ang_vel_b.params["animation"] = ANIMATION_TERM_NAME
         self.observations.disc_demo.ref_joint_pos.params["animation"] = ANIMATION_TERM_NAME
         self.observations.disc_demo.ref_joint_vel.params["animation"] = ANIMATION_TERM_NAME
@@ -257,4 +258,3 @@ class G1AmpEnvCfg_PLAY(G1AmpEnvCfg):
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         
         self.events.reset_from_ref = None
-

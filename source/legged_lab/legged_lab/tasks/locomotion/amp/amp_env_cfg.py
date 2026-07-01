@@ -116,6 +116,10 @@ class ObservationsCfg():
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.03, n_max=0.03))
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.75, n_max=1.75))
         actions = ObsTerm(func=mdp.last_action)
+        key_body_pos_b = ObsTerm(
+            func=mdp.key_body_pos_b,
+            params=MISSING,
+        )
         
 
         def __post_init__(self):
@@ -139,10 +143,10 @@ class ObservationsCfg():
         joint_pos = ObsTerm(func=mdp.joint_pos)
         joint_vel = ObsTerm(func=mdp.joint_vel)
         actions = ObsTerm(func=mdp.last_action)
-        # key_body_pos_b = ObsTerm(
-        #     func=mdp.key_body_pos_b,
-        #     params=MISSING,
-        # )
+        key_body_pos_b = ObsTerm(
+            func=mdp.key_body_pos_b,
+            params=MISSING,
+        )
 
         def __post_init__(self):
             self.history_length = 3
@@ -158,10 +162,10 @@ class ObservationsCfg():
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
         joint_pos = ObsTerm(func=mdp.joint_pos)
         joint_vel = ObsTerm(func=mdp.joint_vel)
-        # key_body_pos_b = ObsTerm(
-        #     func=mdp.key_body_pos_b,
-        #     params=MISSING,
-        # )
+        key_body_pos_b = ObsTerm(
+            func=mdp.key_body_pos_b,
+            params=MISSING,
+        )
         
         def __post_init__(self):
             self.enable_corruption = False
@@ -209,13 +213,13 @@ class ObservationsCfg():
                 "flatten_steps_dim": False,
             }
         )
-        # ref_key_body_pos_b = ObsTerm(
-        #     func=mdp.ref_key_body_pos_b,
-        #     params={
-        #         "animation": MISSING,
-        #         "flatten_steps_dim": False,
-        #     }
-        # )
+        ref_key_body_pos_b = ObsTerm(
+            func=mdp.ref_key_body_pos_b,
+            params={
+                "animation": MISSING,
+                "flatten_steps_dim": False,
+            }
+        )
         
         def __post_init__(self):
             self.enable_corruption = False
@@ -258,7 +262,7 @@ class EventCfg:
         func=mdp.randomize_rigid_body_com,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["torso_link", "base_link"]),
+            "asset_cfg": SceneEntityCfg("robot", body_names=["torso_link", "pelvis"]),
             "com_range": {"x": (-0.03, 0.03), "y": (-0.03, 0.03), "z": (-0.03, 0.03)}, # 0.02
         },
     )
@@ -307,11 +311,11 @@ class EventCfg:
         },
     )
 
-    # reset_from_ref = EventTerm(
-    #     func=mdp.reset_from_ref, 
-    #     mode="reset",
-    #     params=MISSING
-    # )
+    reset_from_ref = EventTerm(
+        func=mdp.reset_from_ref, 
+        mode="reset",
+        params=MISSING
+    )
 
     # # interval
 

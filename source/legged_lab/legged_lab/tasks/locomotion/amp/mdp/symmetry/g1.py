@@ -86,60 +86,31 @@ def _transform_policy_obs_left_right(env: ManagerBasedRLEnv, obs: torch.Tensor) 
     Returns:
         The transformed observation tensor with left-right symmetry applied.
     """
-    # copy observation tensor
     obs = obs.clone()
     device = obs.device
-    joint_num = 29 # G1 29dof
-    key_body_num = 6
 
-    # policy_obs_term_dim = env.observation_manager.group_obs_term_dim["policy"]
-    # [(15,), (15,), (15,), (145,), (145,), (145,)]
-    HISTORY_LEN = 5
-    ANG_VEL_DIM = 3
-    ROT_TAN_NORM = 6
-    VEL_CMD_DIM = 3
-    JOINT_POS_DIM = joint_num
-    JOINT_VEL_DIM = joint_num
-    LAST_ACTIONS_DIM = joint_num
-    KEY_BODY_POS_DIM = key_body_num * 3
-    
-    end_idx = 0
-    # ang vel
-    for h in range(HISTORY_LEN):
+    term_names = env.observation_manager.active_terms["policy"]
+    term_dims = env.observation_manager.group_obs_term_dim["policy"]
+
+    start_idx = 0
+    for term_name, term_dim in zip(term_names, term_dims):
+        end_idx = start_idx + int(torch.tensor(term_dim).prod().item())
+        term_obs = obs[:, start_idx:end_idx]
+
+        if term_name == "base_ang_vel":
+            term_obs = term_obs * torch.tensor([-1, 1, -1], device=device)
+        elif term_name == "projected_gravity":
+            term_obs = term_obs * torch.tensor([1, -1, 1], device=device)
+        elif term_name == "velocity_commands":
+            term_obs = term_obs * torch.tensor([1, -1, -1], device=device)
+        elif term_name in {"joint_pos", "joint_vel", "actions"}:
+            term_obs = _switch_g1_29dof_joints_left_right(term_obs)
+        elif term_name == "key_body_pos_b":
+            term_obs = _switch_g1_29dof_key_body_pos_left_right(term_obs)
+
+        obs[:, start_idx:end_idx] = term_obs
         start_idx = end_idx
-        end_idx = start_idx + ANG_VEL_DIM
-        obs[:, start_idx:end_idx] = obs[:, start_idx:end_idx] * torch.tensor([-1, 1, -1], device=device)
-    # root rot tan norm
-    for h in range(HISTORY_LEN):
-        start_idx = end_idx
-        end_idx = start_idx + ROT_TAN_NORM
-        obs[:, start_idx:end_idx] = obs[:, start_idx:end_idx] * torch.tensor([1, -1, 1, 1, -1, 1], device=device)
-    # velocity command
-    for h in range(HISTORY_LEN):
-        start_idx = end_idx
-        end_idx = start_idx + VEL_CMD_DIM
-        obs[:, start_idx:end_idx] = obs[:, start_idx:end_idx] * torch.tensor([1, -1, -1], device=device)
-    # joint pos
-    for h in range(HISTORY_LEN):
-        start_idx = end_idx
-        end_idx = start_idx + JOINT_POS_DIM
-        obs[:, start_idx:end_idx] = _switch_g1_29dof_joints_left_right(obs[:, start_idx:end_idx])
-    # joint vel
-    for h in range(HISTORY_LEN):
-        start_idx = end_idx
-        end_idx = start_idx + JOINT_VEL_DIM
-        obs[:, start_idx:end_idx] = _switch_g1_29dof_joints_left_right(obs[:, start_idx:end_idx])
-    # last actions
-    for h in range(HISTORY_LEN):
-        start_idx = end_idx
-        end_idx = start_idx + LAST_ACTIONS_DIM
-        obs[:, start_idx:end_idx] = _switch_g1_29dof_joints_left_right(obs[:, start_idx:end_idx])
-    # key body pos
-    for h in range(HISTORY_LEN):
-        start_idx = end_idx
-        end_idx = start_idx + KEY_BODY_POS_DIM
-        obs[:, start_idx:end_idx] = _switch_g1_29dof_key_body_pos_left_right(obs[:, start_idx:end_idx])
-    
+
     return obs
 
 

@@ -140,7 +140,14 @@ python scripts/rsl_rl/play.py --task LeggedLab-Isaac-Deepmimic-G1-v0 --headless 
 To train the AMP algorithm, you can run the following command:
 
 ```bash
-python scripts/rsl_rl/train.py --task LeggedLab-Isaac-AMP-Flat-Atom01-v0 --headless --num_envs 8192
+python scripts/rsl_rl/train.py \
+  --task LeggedLab-Isaac-AMP-G1-v0 \
+  --headless \
+  --max_iterations 50000 \
+  --num_envs 4096 \
+  --video \
+  --video_interval 2000 \
+  --video_length 200
 ```
 
 ```bash
