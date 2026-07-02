@@ -75,4 +75,64 @@ class G1RslRlOnPolicyRunnerAmpCfg(RslRlOnPolicyRunnerCfg):
     )
 
 
+@configclass
+class G1MotionBricksRslRlOnPolicyRunnerAmpCfg(G1RslRlOnPolicyRunnerAmpCfg):
+    experiment_name = "g1_motionbricks_amp"
+    logger = "wandb"
+    wandb_project = "g1_motionbricks_amp"
 
+
+@configclass
+class G1HeightScanRslRlOnPolicyRunnerAmpCfg(G1RslRlOnPolicyRunnerAmpCfg):
+    experiment_name = "g1_amp_height_scan"
+    logger = "wandb"
+    wandb_project = "g1_amp_height_scan"
+
+
+@configclass
+class G1MotionBricksHeightScanRslRlOnPolicyRunnerAmpCfg(G1RslRlOnPolicyRunnerAmpCfg):
+    experiment_name = "g1_motionbricks_amp_height_scan"
+    logger = "wandb"
+    wandb_project = "g1_motionbricks_amp_height_scan"
+
+
+@configclass
+class G1MotionBricksSoftAmpRslRlOnPolicyRunnerAmpCfg(G1MotionBricksRslRlOnPolicyRunnerAmpCfg):
+    experiment_name = "g1_motionbricks_amp_soft_disc"
+    wandb_project = "g1_motionbricks_amp_soft_disc"
+    algorithm = RslRlPpoAmpAlgorithmCfg(
+        class_name="PPOAMP",
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=3.0e-5,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+        amp_cfg=RslRlAmpCfg(
+            disc_obs_buffer_size=256,
+            grad_penalty_scale=10.0,
+            disc_trunk_weight_decay=1.0e-4,
+            disc_linear_weight_decay=1.0e-2,
+            disc_learning_rate=3.0e-5,
+            disc_max_grad_norm=1.0,
+            amp_discriminator=RslRlAmpCfg.AMPDiscriminatorCfg(
+                hidden_dims=[512, 256],
+                activation="elu",
+                style_reward_scale=5.0,
+                task_style_lerp=0.4,
+            ),
+            loss_type="LSGAN",
+        ),
+        symmetry_cfg=RslRlSymmetryCfg(
+            use_data_augmentation=True,
+            data_augmentation_func=g1.compute_symmetric_states,
+            use_mirror_loss=True,
+            mirror_loss_coeff=0.1,
+        ),
+    )

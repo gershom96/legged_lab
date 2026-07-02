@@ -42,40 +42,42 @@ https://github.com/user-attachments/assets/ed84a8a3-f349-44ac-9cfd-2baab2265a25
 
 ### Prerequisites
 
-- **Isaac Lab**: Ensure you have installed Isaac Lab `v2.3.1`. Follow the [official guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
+- **uv**: Required for creating the project Python environment from `pyproject.toml` and `uv.lock`.
 - **Git LFS**: Required for downloading large model files.
+- **NVIDIA GPU driver**: Required for Isaac Sim / Isaac Lab training with CUDA.
 
 ### Setup Steps
 
 1.  **Clone the Repository**
-    Clone this repository *outside* your existing `IsaacLab` directory to maintain isolation.
+    Clone this repository with its `rsl_rl` submodule.
 
     ```bash
     # Option 1: HTTPS
-    git clone https://github.com/zerojuhao/legged_lab
+    git clone --recurse-submodules https://github.com/zerojuhao/legged_lab
     
     # Option 2: SSH
-    git clone git@github.com:zerojuhao/legged_lab.git
+    git clone --recurse-submodules git@github.com:zerojuhao/legged_lab.git
     
     cd legged_lab
     ```
 
-2.  **Install the Package**
-    Use the Python interpreter associated with your Isaac Lab installation.
+    If you already cloned without submodules, initialize them with:
 
     ```bash
-    python -m pip install -e source/legged_lab
+    git submodule update --init --recursive
     ```
 
-3.  **Install RSL-RL (Forked Version)**
-    We use a customized version of `rsl_rl` to support advanced features like AMP.
+2.  **Create the Python Environment**
+    Use `uv` to create the local `.venv` and install the locked dependencies, including Isaac Lab, Isaac Sim, the local `legged_lab` package, and the forked `rsl_rl` submodule.
 
     ```bash
-    # Clone outside of IsaacLab and legged_lab directories
-    git clone -b feature/amp https://github.com/zitongbai/rsl_rl.git
-    
-    cd rsl_rl
-    python -m pip install -e .
+    uv sync
+    ```
+
+3.  **Run Commands Through the Environment**
+
+    ```bash
+    uv run python scripts/rsl_rl/train.py -h
     ```
 
 ## 🚀 Usage
@@ -133,6 +135,164 @@ python scripts/rsl_rl/play.py --task LeggedLab-Isaac-Deepmimic-G1-v0 --headless 
 
 
 #### 🏃 Adversarial Motion Priors (AMP)
+
+##### MotionBricks G1
+
+Convert the MotionBricks `.npz` files into the Legged Lab AMP motion format:
+
+```bash
+uv run python scripts/tools/motionbricks/convert_motionbricks_to_legged_lab_fast.py \
+  --workers 22
+```
+
+Then train with the MotionBricks task:
+
+```bash
+uv run python scripts/rsl_rl/train.py \
+  --task LeggedLab-Isaac-AMP-G1-MotionBricks-v0 \
+  --headless \
+  --max_iterations 50000 \
+  --num_envs 1024
+```
+
+This task uses Weights & Biases logging by default with project `g1_motionbricks_amp`.
+Use `--logger tensorboard` to disable WandB for a run, or `--log_project_name <project>` to choose another WandB project.
+
+By default, the converter reads from `~/Documents/shared_datasets/motionbricks/motionbricks_sonic_grid_walk_dense/motions`
+and writes converted `.pkl` files to `~/Documents/shared_datasets/motionbricks/motionbricks_sonic_grid_walk_dense/legged_lab_g1`.
+Set `LEGGED_LAB_MOTIONBRICKS_G1_DIR` if you want the task to load converted motions from another directory.
+
+To restart AMP training around an already-good actor/critic, use actor-only warm start instead of `--resume`.
+This loads only the policy/value network and resets the PPO optimizer, AMP discriminator, discriminator normalizer, and AMP optimizer.
+
+```bash
+uv run python scripts/rsl_rl/train.py \
+  --task LeggedLab-Isaac-AMP-G1-MotionBricks-SoftDisc-v0 \
+  --headless \
+  --max_iterations 50000 \
+  --num_envs 4096 \
+  --warm_start \
+  --warm_start_experiment_name g1_motionbricks_amp \
+  --warm_start_run 2026-07-01_14-16-48 \
+  --warm_start_checkpoint model_2000.pt
+```
+
+The `SoftDisc` task uses the same MotionBricks environment with a softer AMP discriminator:
+moderately larger replay buffer, lower discriminator learning rate, smaller discriminator network, and lower PPO learning rate for fine-tuning.
+
+##### G1 Behavior Cloning Warm Start
+
+You can pretrain the same AMP actor architecture offline from both the default AMP motions and the converted MotionBricks motions:
+
+```bash
+uv run python scripts/rsl_rl/train_bc.py \
+  --default_weight 0.2 \
+  --motionbricks_weight 0.8 \
+  --iterations 20000 \
+  --batch_size 8192 \
+  --logger wandb \
+  --wandb_project g1_bc_mixed_motion \
+  --device cuda:0
+```
+
+The BC target is the next-frame normalized joint-position action:
+`(reference_dof_pos[t+1] - default_dof_pos) / 0.25`.
+The policy input is the full 114-D AMP actor observation derived from the motion file: body angular velocity, projected gravity, derived velocity command, relative joint position, joint velocity, previous action, and key-body positions in the pelvis frame.
+
+If you want to keep the critic from a good AMP checkpoint and only nudge the actor with BC, initialize from that checkpoint and freeze the critic:
+
+```bash
+uv run python scripts/rsl_rl/train_bc.py \
+  --default_weight 0.2 \
+  --motionbricks_weight 0.8 \
+  --iterations 10000 \
+  --batch_size 8192 \
+  --init_checkpoint logs/rsl_rl/g1_motionbricks_amp/2026-07-01_14-16-48/model_3600.pt \
+  --freeze_critic \
+  --logger wandb \
+  --wandb_project g1_bc_mixed_motion \
+  --device cuda:0
+```
+
+Then warm-start AMP from the BC checkpoint:
+
+```bash
+uv run python scripts/rsl_rl/train.py \
+  --task LeggedLab-Isaac-AMP-G1-MotionBricks-SoftDisc-v0 \
+  --headless \
+  --max_iterations 50000 \
+  --num_envs 4096 \
+  --warm_start \
+  --warm_start_experiment_name g1_bc_mixed_motion \
+  --warm_start_run <BC_RUN_DIR_NAME> \
+  --warm_start_checkpoint model_bc.pt
+```
+
+##### G1 Actor Keyboard Play
+
+Use the generic actor keyboard player to inspect any G1 actor checkpoint with manual velocity commands. It loads the actor `model_state_dict` directly and disables AMP reference-motion loading by default.
+
+```bash
+uv run python scripts/rsl_rl/play_actor_keyboard.py \
+  --checkpoint logs/rsl_rl/ananth/model_49999.pt \
+  --num_envs 1 \
+  --real-time
+```
+
+You can start with a nonzero command:
+
+```bash
+uv run python scripts/rsl_rl/play_actor_keyboard.py \
+  --checkpoint logs/rsl_rl/ananth/model_49999.pt \
+  --num_envs 1 \
+  --vx 0.5 \
+  --real-time
+```
+
+Keyboard controls:
+
+```text
+W / Up       increase forward velocity
+S / Down     decrease forward velocity
+A / Left     increase lateral velocity
+D / Right    decrease lateral velocity
+Q            increase yaw rate
+E            decrease yaw rate
+X / Space    zero the command
+```
+
+For a BC checkpoint, swap the checkpoint path:
+
+```bash
+uv run python scripts/rsl_rl/play_actor_keyboard.py \
+  --checkpoint logs/rsl_rl/g1_bc_mixed_motion_scratch/2026-07-02_11-25-38/model_bc.pt \
+  --num_envs 1 \
+  --real-time
+```
+
+##### G1 Height-Scan Perception
+
+Height-scan variants are available when you want to train or fine-tune with terrain perception. They attach a yaw-aligned ray-cast grid to `torso_link` and append the flattened height map to both actor and critic observations.
+
+The existing non-perception tasks are unchanged. Use these task IDs only when you want the larger perception observation space:
+
+```bash
+# Default G1 AMP with height scan
+uv run python scripts/rsl_rl/train.py \
+  --task LeggedLab-Isaac-AMP-G1-HeightScan-v0 \
+  --headless \
+  --max_iterations 50000 \
+  --num_envs 4096
+
+# MotionBricks G1 AMP with height scan
+uv run python scripts/rsl_rl/train.py \
+  --task LeggedLab-Isaac-AMP-G1-MotionBricks-HeightScan-v0 \
+  --headless \
+  --max_iterations 50000 \
+  --num_envs 4096
+```
+
+The default grid matches the TienKung-Lab setup: `1.6m x 1.0m` at `0.1m` resolution, with height values computed as `scanner_z - terrain_hit_z - 0.5`.
 
 <details>
 <summary>Train</summary>

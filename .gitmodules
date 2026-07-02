@@ -1,0 +1,4 @@
+[submodule "rsl_rl"]
+	path = rsl_rl
+	url = https://github.com/zitongbai/rsl_rl.git
+	branch = feature/amp

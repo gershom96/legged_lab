@@ -107,11 +107,27 @@ def _transform_policy_obs_left_right(env: ManagerBasedRLEnv, obs: torch.Tensor) 
             term_obs = _switch_g1_29dof_joints_left_right(term_obs)
         elif term_name == "key_body_pos_b":
             term_obs = _switch_g1_29dof_key_body_pos_left_right(term_obs)
+        elif term_name == "height_scan":
+            term_obs = _flip_height_scan_left_right(env, term_obs)
 
         obs[:, start_idx:end_idx] = term_obs
         start_idx = end_idx
 
     return obs
+
+
+def _flip_height_scan_left_right(env: ManagerBasedRLEnv, height_scan: torch.Tensor) -> torch.Tensor:
+    """Flip flattened height-scan observations across the robot's left-right axis."""
+    sensors = getattr(env.scene, "sensors", {})
+    sensor = sensors.get("height_scanner") if hasattr(sensors, "get") else None
+    if sensor is None or not hasattr(sensor.cfg, "shape"):
+        return height_scan
+
+    x_len, y_len = sensor.cfg.shape
+    if x_len * y_len != height_scan.shape[-1]:
+        return height_scan
+
+    return height_scan.reshape(height_scan.shape[0], x_len, y_len).flip(dims=[2]).reshape_as(height_scan)
 
 
 """

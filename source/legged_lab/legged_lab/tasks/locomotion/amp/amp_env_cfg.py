@@ -28,6 +28,7 @@ import legged_lab.tasks.locomotion.amp.mdp as mdp
 from legged_lab.envs import ManagerBasedAmpEnvCfg
 from legged_lab.managers import AnimationTermCfg as AnimTerm
 from legged_lab.managers import MotionDataTermCfg as MotionDataTerm
+from legged_lab.sensors import RayCasterArrayCfg
 
 @configclass
 class AmpSceneCfg(InteractiveSceneCfg):
@@ -59,6 +60,7 @@ class AmpSceneCfg(InteractiveSceneCfg):
     robot_anim: ArticulationCfg = None
     # sensors
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
+    height_scanner: RayCasterArrayCfg = None
     # lights
     sky_light = AssetBaseCfg(
         prim_path="/World/skyLight",
@@ -120,6 +122,7 @@ class ObservationsCfg():
             func=mdp.key_body_pos_b,
             params=MISSING,
         )
+        height_scan: ObsTerm = None
         
 
         def __post_init__(self):
@@ -147,6 +150,7 @@ class ObservationsCfg():
             func=mdp.key_body_pos_b,
             params=MISSING,
         )
+        height_scan: ObsTerm = None
 
         def __post_init__(self):
             self.history_length = 3

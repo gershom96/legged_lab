@@ -1,5 +1,6 @@
 import os
 import math
+from pathlib import Path
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
@@ -22,6 +23,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 import legged_lab.tasks.locomotion.amp.mdp as mdp
 from legged_lab.tasks.locomotion.amp.amp_env_cfg import LocomotionAmpEnvCfg
 from legged_lab import LEGGED_LAB_ROOT_DIR
+from legged_lab.sensors import RayCasterArrayCfg
 
 ##
 # Pre-defined configs
@@ -39,6 +41,42 @@ KEY_BODY_NAMES = [
 ] # if changed here and symmetry is enabled, remember to update amp.mdp.symmetry.g1 as well!
 ANIMATION_TERM_NAME = "animation"
 AMP_NUM_STEPS = 4
+HEIGHT_SCAN_BODY_NAME = "torso_link"
+HEIGHT_SCAN_SENSOR_NAME = "height_scanner"
+HEIGHT_SCAN_OFFSET = 0.5
+HEIGHT_SCAN_RESOLUTION = 0.1
+HEIGHT_SCAN_SIZE = (1.6, 1.0)
+
+
+def enable_height_scan_observations(
+    cfg: LocomotionAmpEnvCfg,
+    body_name: str = HEIGHT_SCAN_BODY_NAME,
+    offset: float = HEIGHT_SCAN_OFFSET,
+    resolution: float = HEIGHT_SCAN_RESOLUTION,
+    size: tuple[float, float] = HEIGHT_SCAN_SIZE,
+    noise: float = 0.1,
+    debug_vis: bool = False,
+):
+    """Attach a terrain height scanner and expose it to policy and critic observations."""
+    cfg.scene.height_scanner = RayCasterArrayCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/" + body_name,
+        offset=RayCasterArrayCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        attach_yaw_only=True,
+        pattern_cfg=patterns.GridPatternCfg(resolution=resolution, size=size),
+        debug_vis=debug_vis,
+        mesh_prim_paths=["/World/ground"],
+        update_period=cfg.sim.dt * cfg.decimation,
+    )
+    sensor_cfg = SceneEntityCfg(HEIGHT_SCAN_SENSOR_NAME)
+    cfg.observations.policy.height_scan = ObsTerm(
+        func=mdp.height_scan,
+        params={"sensor_cfg": sensor_cfg, "offset": offset},
+        noise=Unoise(n_min=-noise, n_max=noise),
+    )
+    cfg.observations.critic.height_scan = ObsTerm(
+        func=mdp.height_scan,
+        params={"sensor_cfg": sensor_cfg, "offset": offset},
+    )
 
 @configclass
 class G1AmpRewards():
@@ -258,3 +296,88 @@ class G1AmpEnvCfg_PLAY(G1AmpEnvCfg):
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         
         self.events.reset_from_ref = None
+
+
+@configclass
+class G1AmpHeightScanEnvCfg(G1AmpEnvCfg):
+    """G1 AMP environment with a flattened terrain height scan in actor and critic observations."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        enable_height_scan_observations(self)
+
+
+@configclass
+class G1AmpHeightScanEnvCfg_PLAY(G1AmpHeightScanEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.scene.num_envs = 48
+        self.scene.env_spacing = 2.5
+        self.commands.base_velocity.ranges.lin_vel_x = (0.5, 3.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        self.events.reset_from_ref = None
+
+
+@configclass
+class G1MotionBricksAmpEnvCfg(G1AmpEnvCfg):
+    """G1 AMP environment trained from converted MotionBricks motion priors."""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        motion_data_dir = Path(
+            os.environ.get(
+                "LEGGED_LAB_MOTIONBRICKS_G1_DIR",
+                "~/Documents/shared_datasets/motionbricks/motionbricks_sonic_grid_walk_dense/legged_lab_g1",
+            )
+        ).expanduser()
+        if not motion_data_dir.exists():
+            raise FileNotFoundError(
+                f"Converted MotionBricks data directory does not exist: {motion_data_dir}. "
+                "Run scripts/tools/motionbricks/convert_motionbricks_to_legged_lab.py first, "
+                "or set LEGGED_LAB_MOTIONBRICKS_G1_DIR to the converted .pkl directory."
+            )
+
+        motion_names = sorted(path.stem for path in motion_data_dir.glob("*.pkl"))
+        if not motion_names:
+            raise FileNotFoundError(
+                f"No converted MotionBricks .pkl files found in: {motion_data_dir}. "
+                "Run scripts/tools/motionbricks/convert_motionbricks_to_legged_lab.py first."
+            )
+
+        self.motion_data.motion_dataset.motion_data_dir = str(motion_data_dir)
+        self.motion_data.motion_dataset.motion_data_weights = {name: 1.0 for name in motion_names}
+
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+
+
+@configclass
+class G1MotionBricksAmpEnvCfg_PLAY(G1MotionBricksAmpEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.scene.num_envs = 48
+        self.scene.env_spacing = 2.5
+
+
+@configclass
+class G1MotionBricksAmpHeightScanEnvCfg(G1MotionBricksAmpEnvCfg):
+    """MotionBricks G1 AMP environment with a flattened terrain height scan."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        enable_height_scan_observations(self)
+
+
+@configclass
+class G1MotionBricksAmpHeightScanEnvCfg_PLAY(G1MotionBricksAmpHeightScanEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.scene.num_envs = 48
+        self.scene.env_spacing = 2.5

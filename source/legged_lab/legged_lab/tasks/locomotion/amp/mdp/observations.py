@@ -87,3 +87,13 @@ def ray_caster(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor
     hits = sensor.data.ray_hits_w  # [num_envs, num_rays, 3]
     distances = torch.norm(hits - origin, dim=-1).clamp(min=0.2, max=5)  # [num_envs, num_rays]
     return distances
+
+
+def height_scan(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg, offset: float = 0.5) -> torch.Tensor:
+    """Return a flattened terrain height scan from a ray-caster sensor.
+
+    Values are measured relative to the scanner height, matching TienKung-Lab's convention:
+    scanner_z - terrain_hit_z - offset.
+    """
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+    return sensor.data.pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[..., 2] - offset

@@ -398,6 +398,22 @@ wheels = [
 ]
 
 [[package]]
+name = "etils"
+version = "1.14.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/26/ce/6e067242fde898841922ac6fc82b0bb2fe35c38e995880bdffdfbe30182a/etils-1.14.0.tar.gz", hash = "sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4", size = 108127, upload-time = "2026-03-04T17:41:36.291Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5a/3d/589663aeeacd59bb2f3e8596bfd3e81cf0fb18d70bb433199041f469771b/etils-1.14.0-py3-none-any.whl", hash = "sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4", size = 172934, upload-time = "2026-03-04T17:41:35.01Z" },
+]
+
+[package.optional-dependencies]
+epath = [
+    { name = "fsspec", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "typing-extensions", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "zipp", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+
+[[package]]
 name = "farama-notifications"
 version = "0.0.6"
 source = { registry = "https://pypi.org/simple" }
@@ -497,6 +513,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/33/f6/354ae6491228b5eb40e10d89c4d13c651fe1cf7556e35ebdded50cff57ce/gitpython-3.1.50.tar.gz", hash = "sha256:80da2d12504d52e1f998772dc5baf6e553f8d2fcfe1fcc226c9d9a2ee3372dcc", size = 219798, upload-time = "2026-05-06T04:01:26.571Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/20/7a/1c6e3562dfd8950adbb11ffbc65d21e7c89d01a6e4f137fa981056de25c5/gitpython-3.1.50-py3-none-any.whl", hash = "sha256:d352abe2908d07355014abdd21ddf798c2a961469239afec4962e9da884858f9", size = 212507, upload-time = "2026-05-06T04:01:23.799Z" },
+]
+
+[[package]]
+name = "glfw"
+version = "2.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/96/72/642d4f12f61816ac96777f7360d413e3977a7dd08237d196f02da681b186/glfw-2.10.0.tar.gz", hash = "sha256:801e55d8581b34df9aa2cfea43feb06ff617576e2a8cc5dac23ee75b26d10abe", size = 31475, upload-time = "2025-09-12T08:54:38.871Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/aa/3b503c448609dee6cb4e7138b4109338f0e65b97be107ab85562269d378d/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.p39.p310.p311.p312.p313-none-manylinux2014_x86_64.whl", hash = "sha256:59c53387dc08c62e8bed86bbe3a8d53ab1b27161281ffa0e7f27b64284e2627c", size = 241984, upload-time = "2025-09-12T08:54:31.347Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/02/6e639e90f181dc9127046e00d0528f9f7ad12d428972e3a5378b9aefdb0b/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.p39.p310.p311.p312.p313-none-manylinux_2_28_x86_64.whl", hash = "sha256:7916034efa867927892635733a3b6af8cd95ceb10566fd7f1e0d2763c2ee8b12", size = 243525, upload-time = "2025-09-12T08:54:34.006Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/fa/b035636cd82198b97b51a93efe9cfc4343d6b15cefbd336a3f2be871d848/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-manylinux2014_x86_64.whl", hash = "sha256:91d36b3582a766512eff8e3b5dcc2d3ffcbf10b7cf448551085a08a10f1b8244", size = 241983, upload-time = "2026-01-28T05:58:00.352Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/3f/efeb7c6801c46e11bd666a5180f0d615f74f72264212f74f39586c6fda9d/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-manylinux_2_28_x86_64.whl", hash = "sha256:ce6724bb7cb3d0543dcba17206dce909f94176e68220b8eafee72e9f92bcf542", size = 243522, upload-time = "2026-01-28T05:58:03.517Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/c4/82ac75fdcfba2896da7a573c0fc7f8ceb8f77ead6866d500d06c32f1c464/glfw-2.10.0-py2.py3-none-manylinux2014_x86_64.whl", hash = "sha256:68cf3752bdadb6f4bc0a876247c28c88c7251ac39f8af076ed938fdfd71e72dd", size = 241944, upload-time = "2026-03-10T17:21:26.102Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/93/977b9e679e356871d428ae7a1139ec767dd5177bed58a6344b4d2199e00f/glfw-2.10.0-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:cca5158d62189e08792b1ae54f92307a282921a0e7783315b467e21b0a381c88", size = 243480, upload-time = "2026-03-10T17:21:30.538Z" },
 ]
 
 [[package]]
@@ -1229,6 +1259,7 @@ dependencies = [
     { name = "isaacsim", extra = ["all", "extscache"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "legged-lab", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "markupsafe", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "mujoco", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "networkx", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "onnxscript", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -1243,6 +1274,7 @@ dependencies = [
     { name = "torchvision", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "tqdm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "typing-extensions", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "wandb", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
 [package.metadata]
@@ -1253,6 +1285,7 @@ requires-dist = [
     { name = "isaacsim", extras = ["all", "extscache"], specifier = "==5.1.0.0" },
     { name = "legged-lab", editable = "source/legged_lab" },
     { name = "markupsafe", specifier = "==2.1.3" },
+    { name = "mujoco", specifier = ">=3.2" },
     { name = "networkx", specifier = "==3.3" },
     { name = "numpy", specifier = "==1.26.0" },
     { name = "onnxscript", specifier = ">=0.5" },
@@ -1267,6 +1300,7 @@ requires-dist = [
     { name = "torchvision", specifier = "==0.22.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
     { name = "tqdm" },
     { name = "typing-extensions", specifier = "==4.12.2" },
+    { name = "wandb", specifier = ">=0.17" },
 ]
 
 [[package]]
@@ -1403,6 +1437,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/33/5e/2e23593c67df0b21ffb141c485ca0ae955569203d7ff5064040af968cb81/msal-extensions-1.0.0.tar.gz", hash = "sha256:c676aba56b0cce3783de1b5c5ecfe828db998167875126ca4b47dc6436451354", size = 18763, upload-time = "2022-02-14T23:45:54.069Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/34/a8995d6f0fa626ff6b28dbd9c90f6c2a46bd484bc7ab343d078b0c6ff1a7/msal_extensions-1.0.0-py2.py3-none-any.whl", hash = "sha256:91e3db9620b822d0ed2b4d1850056a0f133cba04455e62f11612e40f5502f2ee", size = 19181, upload-time = "2022-02-14T23:45:53.061Z" },
+]
+
+[[package]]
+name = "mujoco"
+version = "3.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "absl-py", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "etils", extra = ["epath"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "glfw", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pyopengl", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a2/3b/c76837b7fdb007f7605ff783689a0bd23a5a49b065928bec2f1fa7ea3d67/mujoco-3.10.0.tar.gz", hash = "sha256:c9e8d5d87d82204ed5bccc87d843c0a53e75aaf381de2938ec46d04f1ac6e24e", size = 1094987, upload-time = "2026-06-22T17:40:59.904Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/07/a37fc7fa55d38e9225884b80c3d241e669357e83f7e23f80b8860a7e14cd/mujoco-3.10.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5489e18a8dd09da2dd71d28563e17889a2e5a0ad07943ebcaa1446d6c4d4e1dd", size = 20789312, upload-time = "2026-06-22T17:40:10.656Z" },
 ]
 
 [[package]]
@@ -1736,6 +1786,15 @@ wheels = [
 ]
 
 [[package]]
+name = "platformdirs"
+version = "4.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/47/e4501f49c178ae1d9f4a75073fda4204f52647993f075a9db4d14930e0c5/platformdirs-4.10.0.tar.gz", hash = "sha256:31e761a6a0ca04faf7353ea759bdba55652be214725111e5aac52dfa29d4bef7", size = 31224, upload-time = "2026-05-28T03:32:53.587Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/e6/cd9575ac904136b3cbf7aa7ee819ef86eedb7274e46f230e94ea4342e729/platformdirs-4.10.0-py3-none-any.whl", hash = "sha256:fb516cdb12eb0d857d0cd85a7c57cea4d060bee4578d6cf5a14dfdf8cbf8784a", size = 22743, upload-time = "2026-05-28T03:32:52.175Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1889,6 +1948,15 @@ wheels = [
 [package.optional-dependencies]
 crypto = [
     { name = "cryptography", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+
+[[package]]
+name = "pyopengl"
+version = "3.1.10"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/16/912b7225d56284859cd9a672827f18be43f8012f8b7b932bc4bd959a298e/pyopengl-3.1.10.tar.gz", hash = "sha256:c4a02d6866b54eb119c8e9b3fb04fa835a95ab802dd96607ab4cdb0012df8335", size = 1915580, upload-time = "2025-08-18T02:33:01.76Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/e4/1ba6f44e491c4eece978685230dde56b14d51a0365bc1b774ddaa94d14cd/pyopengl-3.1.10-py3-none-any.whl", hash = "sha256:794a943daced39300879e4e47bd94525280685f42dbb5a998d336cfff151d74f", size = 3194996, upload-time = "2025-08-18T02:32:59.902Z" },
 ]
 
 [[package]]
@@ -2492,6 +2560,28 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/49/8d/5005d39cd79c9ae87baf7d7aafdcdfe0b13aa69d9a1e3b7f1c984a2ac6d2/uvicorn-0.29.0.tar.gz", hash = "sha256:6a69214c0b6a087462412670b3ef21224fa48cae0e452b5883e8e8bdfdd11dd0", size = 40894, upload-time = "2024-03-20T06:43:25.747Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/73/f5/cbb16fcbe277c1e0b8b3ddd188f2df0e0947f545c49119b589643632d156/uvicorn-0.29.0-py3-none-any.whl", hash = "sha256:2c2aac7ff4f4365c206fd773a39bf4ebd1047c238f8b8268ad996829323473de", size = 60813, upload-time = "2024-03-20T06:43:21.841Z" },
+]
+
+[[package]]
+name = "wandb"
+version = "0.26.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "gitpython", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "packaging", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "platformdirs", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "protobuf", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pydantic", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pyyaml", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "requests", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "sentry-sdk", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "typing-extensions", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6a/a4/72a6640e1f566e81f184a426e3e45298d4c6672664de41adb7eb6f64370a/wandb-0.26.1.tar.gz", hash = "sha256:eef2dbaea06f0b1c0cdc5d76f544ae4c2b8848fc512442a00bd59f0502fc8aa1", size = 42159814, upload-time = "2026-04-23T16:27:34.033Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/e9/b4bf8f3509dcea1cec52233a38991459654635b5a8e6a494eb912e1b9cfb/wandb-0.26.1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:a2c8eeec8706dcd2872e69c3b4d20ec523082fdb4440295491556e219ad2aa67", size = 27192831, upload-time = "2026-04-23T16:27:10.308Z" },
+    { url = "https://files.pythonhosted.org/packages/df/99/58c3d8c36ae8e2b7d70bf6493eb5daa1cca0231a04b025717b4cd1a78f1e/wandb-0.26.1-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:5854928725cfeff1f284d5c043cd353f810e5da02eead2c120ef5056ad026fea", size = 27535542, upload-time = "2026-04-23T16:27:18.473Z" },
 ]
 
 [[package]]
