@@ -1,10 +1,11 @@
 """
 Fast CPU-parallel MotionBricks -> Legged Lab AMP converter.
 
-MotionBricks .npz files already contain root pose, compact MuJoCo qpos, and G1
-29-DOF joint positions. The Legged Lab AMP loader additionally wants
-key_body_pos, so this script uses MuJoCo forward kinematics to compute those
-positions and writes the .pkl files directly.
+MotionBricks .npz files contain root pose, compact MuJoCo qpos, and G1 29-DOF
+joint positions in MuJoCo order. Legged Lab expects IsaacLab joint order for
+dof_pos. The Legged Lab AMP loader additionally wants key_body_pos, so this
+script uses MuJoCo forward kinematics to compute those positions from the raw
+qpos and writes the .pkl files directly.
 """
 
 from __future__ import annotations
@@ -60,6 +61,11 @@ KEY_BODY_NAMES = [
 ]
 
 LOOP_MODES = {"clamp": 0, "wrap": 1}
+
+MUJOCO_TO_ISAACLAB = np.asarray(
+    [0, 6, 12, 1, 7, 13, 2, 8, 14, 3, 9, 15, 22, 4, 10, 16, 23, 5, 11, 17, 24, 18, 25, 19, 26, 20, 27, 21, 28],
+    dtype=np.int64,
+)
 
 _MODEL = None
 _DATA = None
@@ -129,19 +135,29 @@ def _convert_one(args: tuple[str, str, int, bool]) -> tuple[str, bool]:
         root_rot = np.asarray(motion["root_rot"], dtype=np.float32)
         dof_pos = np.asarray(motion["dof_pos"], dtype=np.float32)
         fps = int(round(float(motion["frequency"])))
+        metadata = {
+            key: float(motion[key])
+            for key in ("vx", "vy", "omega", "speed")
+            if key in motion
+        }
 
     if qpos.ndim != 2 or qpos.shape[1] != 36:
         raise ValueError(f"{input_path} qpos must have shape (frames, 36), got {qpos.shape}")
     if dof_pos.ndim != 2 or dof_pos.shape[1] != 29:
         raise ValueError(f"{input_path} dof_pos must have shape (frames, 29), got {dof_pos.shape}")
 
+    dof_pos_isaaclab = dof_pos[:, MUJOCO_TO_ISAACLAB]
+
     output = {
         "fps": fps,
         "root_pos": root_pos,
         "root_rot": root_rot,
-        "dof_pos": dof_pos,
+        "dof_pos": dof_pos_isaaclab,
         "loop_mode": loop_mode,
         "key_body_pos": _compute_key_body_pos(qpos),
+        "source_joint_order": "mujoco",
+        "joint_order": "isaaclab",
+        **metadata,
     }
     joblib.dump(output, output_path)
     return str(output_path), True

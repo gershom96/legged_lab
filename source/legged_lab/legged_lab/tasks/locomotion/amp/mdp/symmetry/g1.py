@@ -13,6 +13,13 @@ if TYPE_CHECKING:
 # specify the functions that are available for import
 __all__ = ["compute_symmetric_states"]
 
+PACKED_ACTOR_FRAME_DIM = 114
+BASE_ANG_VEL_DIM = 3
+PROJECTED_GRAVITY_DIM = 3
+VELOCITY_COMMAND_DIM = 3
+G1_29DOF_DIM = 29
+KEY_BODY_POS_DIM = 18
+
 
 @torch.no_grad()
 def compute_symmetric_states(
@@ -74,10 +81,10 @@ def _transform_policy_obs_left_right(env: ManagerBasedRLEnv, obs: torch.Tensor) 
 
     This function modifies the given observation tensor by applying transformations
     that represent a symmetry with respect to the left-right axis. This includes
-    negating certain components of the linear and angular velocities, projected gravity,
-    velocity commands, and flipping the joint positions, joint velocities, and last actions
-    for the ANYmal robot. Additionally, if height-scan data is present, it is flipped
-    along the relevant dimension.
+    negating selected components of angular velocity, projected gravity, velocity
+    commands, and swapping the G1 joint positions, joint velocities, last actions,
+    and key body positions. If height-scan data is present, it is flipped along the
+    left-right axis.
 
     Args:
         env: The environment instance from which the observation is obtained.
@@ -98,22 +105,77 @@ def _transform_policy_obs_left_right(env: ManagerBasedRLEnv, obs: torch.Tensor) 
         term_obs = obs[:, start_idx:end_idx]
 
         if term_name == "base_ang_vel":
-            term_obs = term_obs * torch.tensor([-1, 1, -1], device=device)
+            term_obs = _apply_repeated_sign_flip(term_obs, torch.tensor([-1, 1, -1], device=device))
         elif term_name == "projected_gravity":
-            term_obs = term_obs * torch.tensor([1, -1, 1], device=device)
+            term_obs = _apply_repeated_sign_flip(term_obs, torch.tensor([1, -1, 1], device=device))
         elif term_name == "velocity_commands":
-            term_obs = term_obs * torch.tensor([1, -1, -1], device=device)
+            term_obs = _apply_repeated_sign_flip(term_obs, torch.tensor([1, -1, -1], device=device))
         elif term_name in {"joint_pos", "joint_vel", "actions"}:
             term_obs = _switch_g1_29dof_joints_left_right(term_obs)
         elif term_name == "key_body_pos_b":
             term_obs = _switch_g1_29dof_key_body_pos_left_right(term_obs)
         elif term_name == "height_scan":
             term_obs = _flip_height_scan_left_right(env, term_obs)
+        elif term_name == "packed_actor_obs":
+            term_obs = _transform_packed_actor_obs_left_right(term_obs)
 
         obs[:, start_idx:end_idx] = term_obs
         start_idx = end_idx
 
     return obs
+
+
+def _transform_packed_actor_obs_left_right(obs: torch.Tensor) -> torch.Tensor:
+    """Mirror packed [full_obs_t-k, ..., full_obs_t] actor observations."""
+    if obs.shape[-1] % PACKED_ACTOR_FRAME_DIM != 0:
+        raise ValueError(
+            f"Packed actor obs dim {obs.shape[-1]} is not divisible by "
+            f"{PACKED_ACTOR_FRAME_DIM}."
+        )
+
+    original_shape = obs.shape
+    obs = obs.reshape(-1, PACKED_ACTOR_FRAME_DIM)
+
+    start = 0
+    end = start + BASE_ANG_VEL_DIM
+    obs[:, start:end] = obs[:, start:end] * torch.tensor([-1, 1, -1], device=obs.device)
+
+    start = end
+    end = start + PROJECTED_GRAVITY_DIM
+    obs[:, start:end] = obs[:, start:end] * torch.tensor([1, -1, 1], device=obs.device)
+
+    start = end
+    end = start + VELOCITY_COMMAND_DIM
+    obs[:, start:end] = obs[:, start:end] * torch.tensor([1, -1, -1], device=obs.device)
+
+    start = end
+    end = start + G1_29DOF_DIM
+    obs[:, start:end] = _switch_g1_29dof_joints_left_right(obs[:, start:end])
+
+    start = end
+    end = start + G1_29DOF_DIM
+    obs[:, start:end] = _switch_g1_29dof_joints_left_right(obs[:, start:end])
+
+    start = end
+    end = start + G1_29DOF_DIM
+    obs[:, start:end] = _switch_g1_29dof_joints_left_right(obs[:, start:end])
+
+    start = end
+    end = start + KEY_BODY_POS_DIM
+    obs[:, start:end] = _switch_g1_29dof_key_body_pos_left_right(obs[:, start:end])
+
+    if end != PACKED_ACTOR_FRAME_DIM:
+        raise RuntimeError(f"Internal packed actor obs layout error: consumed {end} dims.")
+
+    return obs.reshape(original_shape)
+
+
+def _apply_repeated_sign_flip(obs: torch.Tensor, signs: torch.Tensor) -> torch.Tensor:
+    """Apply a sign pattern to current or flattened-history observations."""
+    feature_dim = signs.numel()
+    if obs.shape[-1] % feature_dim != 0:
+        raise ValueError(f"Observation dim {obs.shape[-1]} is not divisible by feature dim {feature_dim}.")
+    return (obs.reshape(obs.shape[0], -1, feature_dim) * signs.reshape(1, 1, feature_dim)).reshape_as(obs)
 
 
 def _flip_height_scan_left_right(env: ManagerBasedRLEnv, height_scan: torch.Tensor) -> torch.Tensor:
@@ -124,10 +186,18 @@ def _flip_height_scan_left_right(env: ManagerBasedRLEnv, height_scan: torch.Tens
         return height_scan
 
     x_len, y_len = sensor.cfg.shape
-    if x_len * y_len != height_scan.shape[-1]:
-        return height_scan
+    map_dim = x_len * y_len
+    if height_scan.shape[-1] % map_dim != 0:
+        raise ValueError(f"Height-scan dim {height_scan.shape[-1]} is not divisible by scanner map dim {map_dim}.")
 
-    return height_scan.reshape(height_scan.shape[0], x_len, y_len).flip(dims=[2]).reshape_as(height_scan)
+    ordering = getattr(sensor.cfg.pattern_cfg, "ordering", "xy")
+    if ordering == "yx":
+        return height_scan.reshape(height_scan.shape[0], -1, x_len, y_len).flip(dims=[3]).reshape_as(height_scan)
+    if ordering == "xy":
+        height_scan_xy = height_scan.reshape(height_scan.shape[0], -1, y_len, x_len).transpose(-1, -2)
+        height_scan_xy = height_scan_xy.flip(dims=[3])
+        return height_scan_xy.transpose(-1, -2).reshape_as(height_scan)
+    raise ValueError(f"Unsupported height-scan ordering: {ordering}.")
 
 
 """
@@ -138,10 +208,8 @@ Symmetry functions for actions.
 def _transform_actions_left_right(actions: torch.Tensor) -> torch.Tensor:
     """Applies a left-right symmetry transformation to the actions tensor.
 
-    This function modifies the given actions tensor by applying transformations
-    that represent a symmetry with respect to the left-right axis. This includes
-    flipping the joint positions, joint velocities, and last actions for the
-    ANYmal robot.
+    This function modifies the given actions tensor by swapping the G1 left and
+    right joint action components and negating mirrored axes where needed.
 
     Args:
         actions: The actions tensor to be transformed.
@@ -190,6 +258,17 @@ Lab joint names:
 
 def _switch_g1_29dof_joints_left_right(joint_data: torch.Tensor) -> torch.Tensor:
     """Applies a left-right symmetry transformation to the joint data tensor."""
+    feature_dim = 29
+    if joint_data.shape[-1] % feature_dim != 0:
+        raise ValueError(f"Joint data dim {joint_data.shape[-1]} is not divisible by {feature_dim}.")
+    original_shape = joint_data.shape
+    joint_data = joint_data.reshape(-1, feature_dim)
+    joint_data_switched = _switch_g1_29dof_joints_left_right_single(joint_data)
+    return joint_data_switched.reshape(original_shape)
+
+
+def _switch_g1_29dof_joints_left_right_single(joint_data: torch.Tensor) -> torch.Tensor:
+    """Apply left-right symmetry to one 29-DoF joint/action vector per row."""
     joint_data_switched = torch.zeros_like(joint_data)
     
     # Indices for left and right joints
@@ -228,8 +307,13 @@ def _switch_g1_29dof_key_body_pos_left_right(key_body_pos: torch.Tensor) -> torc
     # "left_shoulder_roll_link",
     # "right_shoulder_roll_link",
     
+    feature_dim = 18
+    if key_body_pos.shape[-1] % feature_dim != 0:
+        raise ValueError(f"Key-body position dim {key_body_pos.shape[-1]} is not divisible by {feature_dim}.")
+    original_shape = key_body_pos.shape
+    key_body_pos = key_body_pos.reshape(-1, feature_dim)
     key_body_pos_switched = key_body_pos.clone()
-    num_key_bodies = key_body_pos.shape[-1] // 3
+    num_key_bodies = feature_dim // 3
     
     for i in range(num_key_bodies // 2):
         left_idx = i * 2
@@ -243,7 +327,7 @@ def _switch_g1_29dof_key_body_pos_left_right(key_body_pos: torch.Tensor) -> torc
         key_body_pos_switched[..., left_idx * 3 + 1] *= -1.0
         key_body_pos_switched[..., right_idx * 3 + 1] *= -1.0
     
-    return key_body_pos_switched
+    return key_body_pos_switched.reshape(original_shape)
     
     
     

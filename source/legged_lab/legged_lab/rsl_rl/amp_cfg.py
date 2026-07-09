@@ -26,6 +26,12 @@ class RslRlAmpCfg:
     disc_max_grad_norm: float = 1.0
     """Maximum gradient norm for the discriminator networks"""
 
+    min_mean_episode_length: float = 0.0
+    """Minimum moving mean episode length before enabling AMP rewards and discriminator updates.
+
+    A value of 0.0 enables AMP from the start.
+    """
+
     @configclass
     class AMPDiscriminatorCfg:
         """Configuration for the AMP discriminator network."""
@@ -41,6 +47,9 @@ class RslRlAmpCfg:
         
         task_style_lerp: float = 0.0
         """Linear interpolation factor for the task style reward in the AMP training."""
+
+        disc_obs_feature_weights: list[float] | None = None
+        """Optional per-feature discriminator observation weights applied after normalization."""
 
     amp_discriminator: AMPDiscriminatorCfg = AMPDiscriminatorCfg()
     """Configuration for the AMP discriminator network."""

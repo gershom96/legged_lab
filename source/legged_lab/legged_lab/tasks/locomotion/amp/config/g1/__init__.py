@@ -75,6 +75,116 @@ gym.register(
 )
 
 gym.register(
+    id="LeggedLab-Isaac-AMP-G1-MotionBricks-StyleHands-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MotionBricksStyleHandsAmpEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MotionBricksStyleHandsRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MotionBricksRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-SoftDisc-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedSoftAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-VerySoftDisc-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedVerySoftAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-VelocityTuned-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedVelocityTunedAmpEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedVelocityTunedAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-HeightScan-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpHeightScanEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedHeightScanAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-History-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpHistoryEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedHistoryAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-HeightScan-NoHistory-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpHeightScanNoHistoryEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedHeightScanAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-StandScaled-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedStandScaledAmpEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedStandScaledAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-Play-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MotionBricksRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-HeightScan-Play-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpHeightScanEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedHeightScanAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
     id="LeggedLab-Isaac-AMP-G1-MotionBricks-HeightScan-Play-v0",
     entry_point="legged_lab.envs:ManagerBasedAmpEnv",
     disable_env_checker=True,

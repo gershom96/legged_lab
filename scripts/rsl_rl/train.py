@@ -76,6 +76,7 @@ if version.parse(installed_version) < version.parse(RSL_RL_VERSION):
 """Rest everything follows."""
 
 import gymnasium as gym
+import json
 import logging
 import os
 import time
@@ -101,7 +102,9 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 # Import extensions to set up environment tasks
+import legged_lab
 import legged_lab.tasks  # noqa: F401
+import rsl_rl
 
 # import logger
 logger = logging.getLogger(__name__)
@@ -112,6 +115,27 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
+
+
+def _reset_policy_action_std(policy, std_value: float) -> None:
+    """Overwrite a loaded policy's action noise parameter."""
+    if std_value <= 0.0:
+        raise ValueError(f"--reset_policy_std must be positive, got {std_value}.")
+
+    with torch.no_grad():
+        if hasattr(policy, "std"):
+            old_std = policy.std.detach().mean().item()
+            policy.std.fill_(std_value)
+        elif hasattr(policy, "log_std"):
+            old_std = policy.log_std.detach().exp().mean().item()
+            policy.log_std.fill_(torch.log(torch.tensor(std_value, device=policy.log_std.device)))
+        else:
+            raise ValueError(
+                f"Policy class {policy.__class__.__name__} does not expose a global std/log_std parameter."
+            )
+
+    policy.distribution = None
+    print(f"[INFO]: Reset policy action std from {old_std:.6f} to {std_value:.6f}.")
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -156,6 +180,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if agent_cfg.run_name:
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
+    import_paths = {
+        "legged_lab": getattr(legged_lab, "__file__", None),
+        "rsl_rl": getattr(rsl_rl, "__file__", None),
+        "python": sys.executable,
+    }
+    print("[INFO] Python import paths:")
+    for module_name, module_path in import_paths.items():
+        print(f"\t{module_name}: {module_path}")
 
     # set the IO descriptors export flag if requested
     if isinstance(env_cfg, ManagerBasedRLEnvCfg):
@@ -229,10 +261,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO]: Warm-starting actor/critic only from: {warm_start_path}")
         warm_start_checkpoint = torch.load(warm_start_path, weights_only=False, map_location=agent_cfg.device)
         runner.alg.policy.load_state_dict(warm_start_checkpoint["model_state_dict"])
+    if args_cli.reset_policy_std is not None:
+        _reset_policy_action_std(runner.alg.policy, args_cli.reset_policy_std)
 
     # dump the configuration into log-directory
+    os.makedirs(os.path.join(log_dir, "params"), exist_ok=True)
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
+    with open(os.path.join(log_dir, "params", "import_paths.json"), "w", encoding="utf-8") as f:
+        json.dump(import_paths, f, indent=2)
 
     # run training
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)

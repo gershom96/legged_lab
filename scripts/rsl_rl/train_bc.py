@@ -12,6 +12,7 @@ import argparse
 import json
 import math
 import random
+import re
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,9 @@ NUM_POLICY_OBS = 114
 NUM_CRITIC_OBS = 351
 NUM_ACTIONS = 29
 ACTION_SCALE = 0.25
+MOTIONBRICKS_COMMAND_RE = re.compile(
+    r"motionbricks_vx(?P<vx>[pm]\d+p\d+)_vy(?P<vy>[pm]\d+p\d+)_w(?P<omega>[pm]\d+p\d+)"
+)
 
 G1_DEFAULT_DOF_POS = torch.tensor(
     [
@@ -104,6 +108,28 @@ def quat_apply_inverse(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     return quat_apply(quat_conjugate(q), v)
 
 
+def yaw_from_quat_wxyz(q: torch.Tensor) -> torch.Tensor:
+    q = quat_normalize(q)
+    w, x, y, z = q.unbind(dim=-1)
+    return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
+def parse_motionbricks_command_from_name(path: Path) -> tuple[float, float, float] | None:
+    match = MOTIONBRICKS_COMMAND_RE.search(path.stem)
+    if match is None:
+        return None
+
+    def parse_token(value: str) -> float:
+        sign = -1.0 if value[0] == "m" else 1.0
+        return sign * float(value[1:].replace("p", "."))
+
+    return (
+        parse_token(match.group("vx")),
+        parse_token(match.group("vy")),
+        parse_token(match.group("omega")),
+    )
+
+
 def next_indices(indices: torch.Tensor, num_frames: int, loop_mode: int) -> torch.Tensor:
     if loop_mode == 1:
         return (indices + 1) % num_frames
@@ -142,6 +168,12 @@ class MotionFileCache:
             return item
 
         raw = joblib.load(path)
+        command = None
+        if all(key in raw for key in ("vx", "vy", "omega")):
+            command = (float(raw["vx"]), float(raw["vy"]), float(raw["omega"]))
+        else:
+            command = parse_motionbricks_command_from_name(path)
+
         item = {
             "fps": float(raw["fps"]),
             "dt": 1.0 / float(raw["fps"]),
@@ -150,6 +182,11 @@ class MotionFileCache:
             "root_rot": quat_normalize(torch.as_tensor(raw["root_rot"], dtype=torch.float32, device=device)),
             "dof_pos": torch.as_tensor(raw["dof_pos"], dtype=torch.float32, device=device),
             "key_body_pos": torch.as_tensor(raw["key_body_pos"], dtype=torch.float32, device=device),
+            "command_w": (
+                torch.tensor(command, dtype=torch.float32, device=device)
+                if command is not None
+                else None
+            ),
         }
         self._items[path] = item
         while len(self._items) > self.max_items:
@@ -221,7 +258,22 @@ class MixedMotionSampler:
 
             gravity = torch.tensor([0.0, 0.0, -1.0], dtype=torch.float32, device=self.device).expand(count, -1)
             projected_gravity = quat_apply_inverse(root_quat, gravity)
-            velocity_commands = torch.stack([root_vel_b[:, 0], root_vel_b[:, 1], root_ang_vel_b[:, 2]], dim=-1)
+            command_w = motion["command_w"]
+            if command_w is None:
+                velocity_commands = torch.stack([root_vel_b[:, 0], root_vel_b[:, 1], root_ang_vel_b[:, 2]], dim=-1)
+            else:
+                yaw = yaw_from_quat_wxyz(root_quat)
+                cos_yaw = torch.cos(yaw)
+                sin_yaw = torch.sin(yaw)
+                command_w = command_w.expand(count, -1)
+                velocity_commands = torch.stack(
+                    [
+                        cos_yaw * command_w[:, 0] + sin_yaw * command_w[:, 1],
+                        -sin_yaw * command_w[:, 0] + cos_yaw * command_w[:, 1],
+                        command_w[:, 2],
+                    ],
+                    dim=-1,
+                )
 
             cur_dof_pos = dof_pos[frame_idx]
             next_dof_pos = dof_pos[next_idx]

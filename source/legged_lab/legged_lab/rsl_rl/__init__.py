@@ -1,4 +1,5 @@
 from .rl_cfg import RslRlPpoActorCriticConv2dCfg
+from .rl_cfg import RslRlPpoActorCriticHeightScanCfg
 from .exporter import export_policy_as_onnx
 
 from .rl_cfg import RslRlPpoAmpAlgorithmCfg

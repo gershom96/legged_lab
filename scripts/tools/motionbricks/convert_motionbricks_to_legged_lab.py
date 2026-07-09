@@ -1,9 +1,11 @@
 """
 Convert MotionBricks G1 .npz motions into the Legged Lab AMP .pkl format.
 
-The MotionBricks files contain root pose and 29-DOF joint positions, but this
-repo's AMP environment also needs Isaac-computed key body positions. This script
-runs the motions through Isaac in batches and writes one .pkl per input .npz.
+The MotionBricks files contain root pose and 29-DOF joint positions in MuJoCo
+order. Legged Lab expects IsaacLab joint order for dof_pos, and the AMP
+environment also needs Isaac-computed key body positions. This script remaps
+the joints, runs the motions through Isaac in batches, and writes one .pkl per
+input .npz.
 """
 
 from __future__ import annotations
@@ -61,6 +63,11 @@ KEY_BODY_NAMES = [
     "right_shoulder_roll_link",
 ]
 
+MUJOCO_TO_ISAACLAB = np.asarray(
+    [0, 6, 12, 1, 7, 13, 2, 8, 14, 3, 9, 15, 22, 4, 10, 16, 23, 5, 11, 17, 24, 18, 25, 19, 26, 20, 27, 21, 28],
+    dtype=np.int64,
+)
+
 
 def motionbricks_to_lab_dict(path: Path, loop_mode: LoopMode) -> dict:
     with np.load(path) as motion:
@@ -68,6 +75,11 @@ def motionbricks_to_lab_dict(path: Path, loop_mode: LoopMode) -> dict:
         root_pos = np.asarray(motion["root_pos"], dtype=np.float32)
         root_rot_wxyz = np.asarray(motion["root_rot"], dtype=np.float32)
         dof_pos = np.asarray(motion["dof_pos"], dtype=np.float32)
+        metadata = {
+            key: float(motion[key])
+            for key in ("vx", "vy", "omega", "speed")
+            if key in motion
+        }
 
     if root_pos.ndim != 2 or root_pos.shape[1] != 3:
         raise ValueError(f"{path} root_pos must have shape (frames, 3), got {root_pos.shape}")
@@ -76,14 +88,19 @@ def motionbricks_to_lab_dict(path: Path, loop_mode: LoopMode) -> dict:
     if dof_pos.ndim != 2 or dof_pos.shape[1] != 29:
         raise ValueError(f"{path} dof_pos must have shape (frames, 29), got {dof_pos.shape}")
 
+    dof_pos_isaaclab = dof_pos[:, MUJOCO_TO_ISAACLAB]
+
     # gmr_to_lab.run_simulator expects xyzw input and stores wxyz output.
     root_rot_xyzw = root_rot_wxyz[:, [1, 2, 3, 0]]
     return {
         "fps": fps,
         "root_pos": root_pos,
         "root_rot": root_rot_xyzw,
-        "dof_pos": dof_pos,
+        "dof_pos": dof_pos_isaaclab,
         "loop_mode": loop_mode.value,
+        "source_joint_order": "mujoco",
+        "joint_order": "isaaclab",
+        **metadata,
     }
 
 
@@ -109,7 +126,10 @@ def convert_batch(input_paths: list[Path], output_dir: Path, loop_mode: LoopMode
     sim.reset()
 
     converted = run_simulator(simulation_app, sim, scene, motions, KEY_BODY_NAMES)
-    for input_path, motion in zip(input_paths, converted):
+    for input_path, input_motion, motion in zip(input_paths, motions, converted):
+        for key in ("vx", "vy", "omega", "speed"):
+            if key in input_motion:
+                motion[key] = input_motion[key]
         output_path = output_dir / f"{input_path.stem}.pkl"
         joblib.dump(motion, output_path)
         print(f"Saved: {output_path}")

@@ -28,6 +28,30 @@ class ManagerBasedAmpEnv(ManagerBasedAnimationEnv):
     def __init__(self, cfg: ManagerBasedAmpEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg=cfg, render_mode=render_mode, **kwargs)
 
+    def _snapshot_observation_history_buffers(self) -> dict[tuple[str, str], tuple[int, torch.Tensor, torch.Tensor | None]]:
+        """Snapshot observation histories so terminal obs can be computed without advancing rollout history."""
+        snapshot = {}
+        history_buffers = self.observation_manager._group_obs_term_history_buffer
+        for group_name, group_buffers in history_buffers.items():
+            for term_name, circular_buffer in group_buffers.items():
+                buffer = circular_buffer._buffer.clone() if circular_buffer._buffer is not None else None
+                snapshot[(group_name, term_name)] = (
+                    circular_buffer._pointer,
+                    circular_buffer._num_pushes.clone(),
+                    buffer,
+                )
+        return snapshot
+
+    def _restore_observation_history_buffers(
+        self, snapshot: dict[tuple[str, str], tuple[int, torch.Tensor, torch.Tensor | None]]
+    ) -> None:
+        history_buffers = self.observation_manager._group_obs_term_history_buffer
+        for (group_name, term_name), (pointer, num_pushes, buffer) in snapshot.items():
+            circular_buffer = history_buffers[group_name][term_name]
+            circular_buffer._pointer = pointer
+            circular_buffer._num_pushes = num_pushes
+            circular_buffer._buffer = buffer
+
     # def _get_amp_observations(self) -> torch.Tensor:
     #     """Get the AMP observations.
 
@@ -104,6 +128,12 @@ class ManagerBasedAmpEnv(ManagerBasedAnimationEnv):
 
         # -- reset envs that terminated/timed-out and log the episode information
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        self.extras.pop("terminal_obs", None)
+        if len(reset_env_ids) > 0:
+            history_snapshot = self._snapshot_observation_history_buffers()
+            self.extras["terminal_obs"] = self.observation_manager.compute(update_history=True)
+            self._restore_observation_history_buffers(history_snapshot)
+
         if len(reset_env_ids) > 0:
             # trigger recorder terms for pre-reset calls
             self.recorder_manager.record_pre_reset(reset_env_ids)
@@ -133,4 +163,3 @@ class ManagerBasedAmpEnv(ManagerBasedAnimationEnv):
         
         # return observations, rewards, resets and extras
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
-

@@ -2,3 +2,6 @@
 	path = rsl_rl
 	url = https://github.com/zitongbai/rsl_rl.git
 	branch = feature/amp
+[submodule "third_party/terrain-generator"]
+	path = third_party/terrain-generator
+	url = https://github.com/gershom96/terrain-generator.git

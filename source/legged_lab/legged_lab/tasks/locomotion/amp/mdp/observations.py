@@ -3,11 +3,13 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 
+from isaaclab.envs.mdp import observations as isaac_obs
 import isaaclab.utils.math as math_utils
 import isaaclab.utils.string as string_utils
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer, RayCaster
+from legged_lab.tasks.locomotion.deepmimic.mdp.observations import key_body_pos_b
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -79,6 +81,31 @@ def ref_root_projected_gravity(
         return projected_gravity.reshape(num_envs, -1)
     else:
         return projected_gravity
+
+
+def packed_actor_obs(
+    env: ManagerBasedEnv,
+    command_name: str = "base_velocity",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Return the full current actor observation before history stacking.
+
+    IsaacLab applies history per observation term. Keeping the actor input as a
+    single term lets history be stacked as full frames:
+    [full_obs_t-k, ..., full_obs_t].
+    """
+    return torch.cat(
+        (
+            isaac_obs.base_ang_vel(env),
+            isaac_obs.projected_gravity(env),
+            isaac_obs.generated_commands(env, command_name=command_name),
+            isaac_obs.joint_pos_rel(env),
+            isaac_obs.joint_vel_rel(env),
+            isaac_obs.last_action(env),
+            key_body_pos_b(env, asset_cfg=asset_cfg),
+        ),
+        dim=-1,
+    )
     
 def ray_caster(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """获取激光雷达（RayCaster）传感器的距离数据"""

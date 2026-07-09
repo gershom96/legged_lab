@@ -103,6 +103,71 @@ def joint_deviation_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = Scene
     return torch.sum(torch.abs(angle), dim=1)
 
 
+def command_scaled_joint_deviation_l1(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    sigma: float = 0.5,
+    min_scale: float = 0.25,
+    angular_scale: float = 0.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize default-pose deviation more strongly when the commanded motion is small."""
+    command = env.command_manager.get_command(command_name)
+    command_activity = torch.sqrt(
+        torch.sum(torch.square(command[:, :2]), dim=1) + torch.square(angular_scale * command[:, 2])
+    )
+    scale = min_scale + (1.0 - min_scale) * torch.exp(-torch.square(command_activity / sigma))
+    return joint_deviation_l1(env, asset_cfg) * scale
+
+
+def command_scaled_joint_deviation_l1_after_mean_episode_length(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    min_mean_episode_length: float,
+    min_learning_iteration: float | None = None,
+    sigma: float = 0.5,
+    min_scale: float = 0.25,
+    angular_scale: float = 0.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Use plain joint deviation until the episode-length gate enables command scaling."""
+    learning_iteration = float(getattr(env, "rsl_rl_learning_iteration", 0.0))
+    if min_learning_iteration is not None and learning_iteration < min_learning_iteration:
+        return joint_deviation_l1(env, asset_cfg)
+    mean_episode_length = float(getattr(env, "rsi_mean_episode_length", 0.0))
+    if mean_episode_length < min_mean_episode_length:
+        return joint_deviation_l1(env, asset_cfg)
+    return command_scaled_joint_deviation_l1(env, command_name, sigma, min_scale, angular_scale, asset_cfg)
+
+
+def root_height_below_target_l2(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize root height only when it drops below a target height."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    height_error = torch.clamp(target_height - asset.data.root_pos_w[:, 2], min=0.0)
+    return torch.square(height_error)
+
+
+def root_height_below_target_l2_after_mean_episode_length(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    min_mean_episode_length: float,
+    min_learning_iteration: float | None = None,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Disable the low-root-height shaping until the episode-length gate opens."""
+    learning_iteration = float(getattr(env, "rsl_rl_learning_iteration", 0.0))
+    if min_learning_iteration is not None and learning_iteration < min_learning_iteration:
+        return torch.zeros(env.num_envs, device=env.device)
+    mean_episode_length = float(getattr(env, "rsi_mean_episode_length", 0.0))
+    if mean_episode_length < min_mean_episode_length:
+        return torch.zeros(env.num_envs, device=env.device)
+    return root_height_below_target_l2(env, target_height, asset_cfg)
+
+
 def joint_pos_limits(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize joint positions if they cross the soft limits.
 
@@ -253,6 +318,46 @@ def stand_still_joint_deviation_l1(
     command = env.command_manager.get_command(command_name)
     # Penalize motion when command is nearly zero.
     return mdp.joint_deviation_l1(env, asset_cfg) * (torch.norm(command[:, :2], dim=1) < command_threshold)
+
+
+def low_command_motion_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    command_threshold: float = 0.1,
+    angular_command_scale: float = 0.5,
+    yaw_weight: float = 0.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize base motion only when the full commanded motion is near zero."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    command_activity = torch.sqrt(
+        torch.sum(torch.square(command[:, :2]), dim=1) + torch.square(angular_command_scale * command[:, 2])
+    )
+    lin_vel_penalty = torch.sum(torch.square(asset.data.root_lin_vel_b[:, :2]), dim=1)
+    yaw_penalty = yaw_weight * torch.square(asset.data.root_ang_vel_b[:, 2])
+    roll_pitch_penalty = torch.sum(torch.square(asset.data.root_ang_vel_b[:, :2]), dim=1)
+    return (lin_vel_penalty + yaw_penalty + roll_pitch_penalty) * (command_activity < command_threshold).float()
+
+
+def low_command_motion_l2_after_mean_episode_length(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    min_mean_episode_length: float,
+    min_learning_iteration: float | None = None,
+    command_threshold: float = 0.1,
+    angular_command_scale: float = 0.5,
+    yaw_weight: float = 0.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Disable low-command motion shaping until the episode-length gate opens."""
+    learning_iteration = float(getattr(env, "rsl_rl_learning_iteration", 0.0))
+    if min_learning_iteration is not None and learning_iteration < min_learning_iteration:
+        return torch.zeros(env.num_envs, device=env.device)
+    mean_episode_length = float(getattr(env, "rsi_mean_episode_length", 0.0))
+    if mean_episode_length < min_mean_episode_length:
+        return torch.zeros(env.num_envs, device=env.device)
+    return low_command_motion_l2(env, command_name, command_threshold, angular_command_scale, yaw_weight, asset_cfg)
 
 
 def joint_energy(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:

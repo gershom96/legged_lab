@@ -54,6 +54,12 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
         default=None,
         help="Checkpoint file to warm-start from. Defaults to --checkpoint.",
     )
+    arg_group.add_argument(
+        "--reset_policy_std",
+        type=float,
+        default=None,
+        help="After resume or warm-start, overwrite the policy's learned action standard deviation.",
+    )
     # -- logger arguments
     arg_group.add_argument(
         "--logger", type=str, default=None, choices={"wandb", "tensorboard", "neptune"}, help="Logger module to use."

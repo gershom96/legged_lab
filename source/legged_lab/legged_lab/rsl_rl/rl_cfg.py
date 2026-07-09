@@ -28,6 +28,43 @@ class RslRlPpoActorCriticConv2dCfg(RslRlPpoActorCriticCfg):
     conv_linear_output_size: int = 16
     """Output size of the linear layer after the convolutional features are flattened."""
 
+
+@configclass
+class RslRlPpoActorCriticHeightScanCfg(RslRlPpoActorCriticCfg):
+    """Configuration for actor-critic networks with flattened height-scan encoders."""
+
+    class_name: str = "ActorCriticHeightScan"
+    """The policy class name."""
+
+    height_scan_shape: tuple[int, int] = (17, 11)
+    """Shape used to reshape the flattened height scan into [C, H, W]."""
+
+    critic_height_scan_history_length: int = 5
+    """Number of height-scan frames stacked as critic CNN input channels."""
+
+    height_scan_ordering: str = "xy"
+    """GridPattern ordering used by the flattened height scan."""
+
+    actor_cnn_cfg: dict = {
+        "output_channels": [16, 32, 64],
+        "kernel_size": [3, 3, 3],
+        "stride": [1, 2, 2],
+        "padding": "zeros",
+        "global_pool": "avg",
+        "flatten": True,
+    }
+    """CNN configuration for the actor height-scan encoder."""
+
+    critic_cnn_cfg: dict = {
+        "output_channels": [16, 32, 64],
+        "kernel_size": [3, 3, 3],
+        "stride": [1, 2, 2],
+        "padding": "zeros",
+        "global_pool": "avg",
+        "flatten": True,
+    }
+    """CNN configuration for the critic height-scan encoder."""
+
 ############################
 # Algorithm configurations #
 ############################
@@ -36,7 +73,6 @@ class RslRlPpoActorCriticConv2dCfg(RslRlPpoActorCriticCfg):
 @configclass
 class RslRlPpoAmpAlgorithmCfg(RslRlPpoAlgorithmCfg):
     """Configuration for the AMP algorithm."""
-    
     class_name: str = "PPOAmp"
     """The algorithm class name. Default is PPOAmp."""
 
@@ -47,5 +83,3 @@ class RslRlPpoAmpAlgorithmCfg(RslRlPpoAlgorithmCfg):
 #########################
 # Runner configurations #
 #########################
-
-    
