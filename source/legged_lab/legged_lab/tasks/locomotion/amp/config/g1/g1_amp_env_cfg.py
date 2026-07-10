@@ -301,20 +301,93 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+_G1_TERRAIN_STAGE_NAMES = (
+    ("flat", "random_rough_mild", "wave_mild"),
+    ("random_rough", "discrete_obstacles", "boxes_low"),
+    ("pyramid_slope", "pyramid_slope_inv", "wave"),
+    ("pyramid_stairs", "pyramid_stairs_inv"),
+    ("stepping_stones", "gap", "pit", "rails"),
+)
+
+_G1_TERRAIN_STAGE_DIFFICULTY_RANGES = (
+    (0.0, 0.15),
+    (0.15, 0.35),
+    (0.35, 0.60),
+    (0.45, 0.80),
+    (0.55, 1.0),
+)
+
+
+def _terrain_stage_names() -> tuple[tuple[str, ...], ...]:
+    terrain_only = os.environ.get("LEGGED_LAB_TERRAIN_ONLY")
+    if terrain_only:
+        names = tuple(name.strip() for name in terrain_only.split(",") if name.strip())
+        if not names:
+            raise ValueError("LEGGED_LAB_TERRAIN_ONLY did not contain any terrain names.")
+        num_rows = int(os.environ.get("LEGGED_LAB_TERRAIN_NUM_ROWS", str(len(_G1_TERRAIN_STAGE_NAMES))))
+        return tuple(names for _ in range(num_rows))
+
+    raw_stage_names = os.environ.get("LEGGED_LAB_TERRAIN_STAGE_NAMES")
+    if raw_stage_names:
+        rows = []
+        for raw_row in raw_stage_names.split(";"):
+            names = tuple(name.strip() for name in raw_row.split(",") if name.strip())
+            if names:
+                rows.append(names)
+        if not rows:
+            raise ValueError("LEGGED_LAB_TERRAIN_STAGE_NAMES did not contain any terrain rows.")
+        return tuple(rows)
+
+    num_rows = int(os.environ.get("LEGGED_LAB_TERRAIN_NUM_ROWS", str(len(_G1_TERRAIN_STAGE_NAMES))))
+    if num_rows < 1 or num_rows > len(_G1_TERRAIN_STAGE_NAMES):
+        raise ValueError(
+            f"LEGGED_LAB_TERRAIN_NUM_ROWS must be in [1, {len(_G1_TERRAIN_STAGE_NAMES)}], got {num_rows}."
+        )
+    return _G1_TERRAIN_STAGE_NAMES[:num_rows]
+
+
+def _terrain_stage_difficulty_ranges(num_rows: int) -> tuple[tuple[float, float], ...]:
+    raw_ranges = os.environ.get("LEGGED_LAB_TERRAIN_STAGE_DIFFICULTY_RANGES")
+    if raw_ranges:
+        rows = []
+        for raw_row in raw_ranges.split(";"):
+            parts = [part.strip() for part in raw_row.replace(":", ",").split(",") if part.strip()]
+            if len(parts) != 2:
+                raise ValueError(
+                    "Each LEGGED_LAB_TERRAIN_STAGE_DIFFICULTY_RANGES row must be 'low,high' or 'low:high'."
+                )
+            rows.append((float(parts[0]), float(parts[1])))
+        if len(rows) != num_rows:
+            raise ValueError(
+                "LEGGED_LAB_TERRAIN_STAGE_DIFFICULTY_RANGES must have the same number of rows as the terrain stages. "
+                f"Got {len(rows)} ranges for {num_rows} rows."
+            )
+        return tuple(rows)
+
+    if num_rows <= len(_G1_TERRAIN_STAGE_DIFFICULTY_RANGES):
+        return _G1_TERRAIN_STAGE_DIFFICULTY_RANGES[:num_rows]
+    return _G1_TERRAIN_STAGE_DIFFICULTY_RANGES + (
+        _G1_TERRAIN_STAGE_DIFFICULTY_RANGES[-1],
+    ) * (num_rows - len(_G1_TERRAIN_STAGE_DIFFICULTY_RANGES))
+
+
 def g1_five_stage_terrain_generator_cfg() -> FiveStageTerrainGeneratorCfg:
     """Build a conservative five-stage rough-terrain curriculum for G1."""
+    stage_names = _terrain_stage_names()
     return FiveStageTerrainGeneratorCfg(
         seed=int(os.environ.get("LEGGED_LAB_TERRAIN_SEED", "0")),
         curriculum=True,
         size=_env_tuple("LEGGED_LAB_TERRAIN_SIZE", (20.0, 20.0), float),
         border_width=float(os.environ.get("LEGGED_LAB_TERRAIN_BORDER_WIDTH", "20.0")),
-        num_rows=5,
+        num_rows=len(stage_names),
         num_cols=int(os.environ.get("LEGGED_LAB_TERRAIN_NUM_COLS", "16")),
         horizontal_scale=float(os.environ.get("LEGGED_LAB_TERRAIN_HORIZONTAL_SCALE", "0.1")),
         vertical_scale=float(os.environ.get("LEGGED_LAB_TERRAIN_VERTICAL_SCALE", "0.005")),
         slope_threshold=float(os.environ.get("LEGGED_LAB_TERRAIN_SLOPE_THRESHOLD", "0.75")),
         use_cache=_env_bool("LEGGED_LAB_TERRAIN_USE_CACHE"),
         cache_dir=os.environ.get("LEGGED_LAB_TERRAIN_CACHE_DIR", "/tmp/isaaclab/terrains/g1_five_stage"),
+        stage_sub_terrain_names=stage_names,
+        stage_difficulty_ranges=_terrain_stage_difficulty_ranges(len(stage_names)),
         sub_terrains={
             "flat": terrain_gen.MeshPlaneTerrainCfg(),
             "random_rough_mild": terrain_gen.HfRandomUniformTerrainCfg(
