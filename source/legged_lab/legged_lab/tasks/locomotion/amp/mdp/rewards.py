@@ -190,6 +190,13 @@ def action_rate_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.sum(torch.square(env.action_manager.action - env.action_manager.prev_action), dim=1)
 
 
+def action_rate_l2_selected(env: ManagerBasedRLEnv, action_indices: tuple[int, ...] | list[int]) -> torch.Tensor:
+    """Penalize action-rate changes for a selected slice of the flat action vector."""
+    action_ids = torch.as_tensor(action_indices, device=env.device, dtype=torch.long)
+    action_delta = env.action_manager.action[:, action_ids] - env.action_manager.prev_action[:, action_ids]
+    return torch.sum(torch.square(action_delta), dim=1)
+
+
 def joint_torques_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize joint torques applied on the articulation using L2 squared kernel.
 

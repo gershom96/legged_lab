@@ -28,6 +28,7 @@ import legged_lab.tasks.locomotion.amp.mdp as mdp
 from legged_lab.tasks.locomotion.amp.amp_env_cfg import LocomotionAmpEnvCfg
 from legged_lab import LEGGED_LAB_ROOT_DIR
 from legged_lab.sensors import RayCasterArrayCfg
+from legged_lab.terrains import WfcTerrainGeneratorCfg
 
 ##
 # Pre-defined configs
@@ -43,6 +44,49 @@ KEY_BODY_NAMES = [
     "left_shoulder_roll_link",
     "right_shoulder_roll_link",
 ] # if changed here and symmetry is enabled, remember to update amp.mdp.symmetry.g1 as well!
+G1_LAB_LOWER_BODY_JOINT_NAMES = [
+    "left_hip_pitch_joint",
+    "right_hip_pitch_joint",
+    "waist_yaw_joint",
+    "left_hip_roll_joint",
+    "right_hip_roll_joint",
+    "waist_roll_joint",
+    "left_hip_yaw_joint",
+    "right_hip_yaw_joint",
+    "waist_pitch_joint",
+    "left_knee_joint",
+    "right_knee_joint",
+    "left_ankle_pitch_joint",
+    "right_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_ankle_roll_joint",
+]
+G1_LAB_UPPER_BODY_JOINT_NAMES = [
+    "left_shoulder_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "right_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "right_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "right_elbow_joint",
+    "left_wrist_roll_joint",
+    "right_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "right_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_yaw_joint",
+]
+G1_LAB_LOWER_BODY_ACTION_INDICES = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 17, 18)
+G1_LAB_UPPER_BODY_ACTION_INDICES = (11, 12, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28)
+G1_LAB_UPPER_BODY_JOINT_IDS = G1_LAB_UPPER_BODY_ACTION_INDICES
+G1_UPPER_KEY_BODY_NAMES = [
+    "left_wrist_yaw_link",
+    "right_wrist_yaw_link",
+    "left_shoulder_roll_link",
+    "right_shoulder_roll_link",
+]
+G1_UPPER_KEY_BODY_IDS = (2, 3, 4, 5)
 ANIMATION_TERM_NAME = "animation"
 AMP_NUM_STEPS = 4
 POLICY_PROPRIO_HISTORY_LENGTH = 5
@@ -238,6 +282,146 @@ def enable_height_scan_observations(
     cfg.observations.critic.height_scan.history_length = critic_history_length
     cfg.observations.critic.height_scan.flatten_history_dim = True
 
+
+def _env_tuple(name: str, default: tuple, cast):
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return default
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != len(default):
+        raise ValueError(f"{name} must contain {len(default)} comma-separated values, got {value!r}.")
+    return tuple(cast(part) for part in parts)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def enable_wfc_terrain(cfg: LocomotionAmpEnvCfg):
+    """Use cached terrain-generator WFC meshes as the IsaacLab ground terrain."""
+    custom_primitives = None
+    if _env_bool("LEGGED_LAB_WFC_CUSTOM_PRIMITIVES"):
+        custom_primitives = {
+            "enabled": True,
+            "types": os.environ.get("LEGGED_LAB_WFC_CUSTOM_PRIMITIVE_TYPES", "all"),
+            "weight": float(os.environ.get("LEGGED_LAB_WFC_CUSTOM_PRIMITIVE_WEIGHT", "0.35")),
+            "edge_height": float(os.environ.get("LEGGED_LAB_WFC_CUSTOM_PRIMITIVE_EDGE_HEIGHT", "0.1")),
+        }
+
+    terrain_rows = int(os.environ.get("LEGGED_LAB_WFC_NUM_ROWS", "2"))
+    terrain_cols = int(os.environ.get("LEGGED_LAB_WFC_NUM_COLS", "4"))
+    cfg.scene.terrain.terrain_type = "generator"
+    cfg.scene.terrain.terrain_generator = WfcTerrainGeneratorCfg(
+        terrain_generator_root=os.environ.get("LEGGED_LAB_WFC_TERRAIN_GENERATOR_ROOT"),
+        cache_dir=os.environ.get("LEGGED_LAB_WFC_CACHE_DIR", "logs/wfc_terrain_cache"),
+        seed=int(os.environ.get("LEGGED_LAB_WFC_SEED", "0")),
+        cfg=os.environ.get("LEGGED_LAB_WFC_CFG", "indoor_navigation"),
+        shape=_env_tuple("LEGGED_LAB_WFC_SHAPE", (5, 5), int),
+        tile_dim=_env_tuple("LEGGED_LAB_WFC_TILE_DIM", (2.0, 2.0, 2.0), float),
+        wall_height=float(os.environ.get("LEGGED_LAB_WFC_WALL_HEIGHT", "2.0")),
+        initial_tile_name=os.environ.get("LEGGED_LAB_WFC_INITIAL_TILE", "floor"),
+        over_cfg=_env_bool("LEGGED_LAB_WFC_OVER_CFG"),
+        overhanging_initial_tile_name=os.environ.get("LEGGED_LAB_WFC_OVERHANGING_INITIAL_TILE", "walls_empty"),
+        enable_sdf=_env_bool("LEGGED_LAB_WFC_ENABLE_SDF"),
+        enable_history=_env_bool("LEGGED_LAB_WFC_ENABLE_HISTORY"),
+        save_collision_parts=_env_bool("LEGGED_LAB_WFC_SAVE_COLLISION_PARTS"),
+        sdf_resolution=float(os.environ.get("LEGGED_LAB_WFC_SDF_RESOLUTION", "0.1")),
+        use_boolean_merges=_env_bool("LEGGED_LAB_WFC_USE_BOOLEAN_MERGES"),
+        visualize=_env_bool("LEGGED_LAB_WFC_VISUALIZE"),
+        custom_primitives=custom_primitives,
+        num_rows=terrain_rows,
+        num_cols=terrain_cols,
+        origin_z=float(os.environ.get("LEGGED_LAB_WFC_ORIGIN_Z", "0.0")),
+        spacing_margin=float(os.environ.get("LEGGED_LAB_WFC_SPACING_MARGIN", "0.0")),
+        load_cache=os.environ.get("LEGGED_LAB_WFC_LOAD_CACHE", "1").lower() not in {"0", "false", "no", "off"},
+    )
+    cfg.scene.terrain.use_terrain_origins = True
+    cfg.scene.terrain.max_init_terrain_level = int(
+        os.environ.get("LEGGED_LAB_WFC_MAX_INIT_TERRAIN_LEVEL", str(max(terrain_rows - 1, 0)))
+    )
+
+
+def enable_upper_body_amp_discriminator(cfg: LocomotionAmpEnvCfg):
+    """Restrict AMP discriminator observations to root context plus upper-body motion."""
+    cfg.observations.disc.base_lin_vel = None
+    cfg.observations.disc.root_local_rot_tan_norm = ObsTerm(func=mdp.root_local_rot_tan_norm)
+    cfg.observations.disc.base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
+    cfg.observations.disc.joint_pos = ObsTerm(
+        func=mdp.selected_joint_pos,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=G1_LAB_UPPER_BODY_JOINT_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
+    cfg.observations.disc.joint_vel = ObsTerm(
+        func=mdp.selected_joint_vel,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=G1_LAB_UPPER_BODY_JOINT_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
+    cfg.observations.disc.key_body_pos_b = ObsTerm(
+        func=mdp.key_body_pos_b,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=G1_UPPER_KEY_BODY_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
+    cfg.observations.disc.history_length = AMP_NUM_STEPS
+
+    cfg.observations.disc_demo.ref_root_lin_vel_b = None
+    cfg.observations.disc_demo.ref_root_local_rot_tan_norm = ObsTerm(
+        func=mdp.ref_root_local_rot_tan_norm,
+        params={
+            "animation": ANIMATION_TERM_NAME,
+            "flatten_steps_dim": False,
+        },
+    )
+    cfg.observations.disc_demo.ref_root_ang_vel_b = ObsTerm(
+        func=mdp.ref_root_ang_vel_b,
+        params={
+            "animation": ANIMATION_TERM_NAME,
+            "flatten_steps_dim": False,
+        },
+    )
+    cfg.observations.disc_demo.ref_joint_pos = ObsTerm(
+        func=mdp.ref_selected_joint_pos,
+        params={
+            "animation": ANIMATION_TERM_NAME,
+            "joint_ids": G1_LAB_UPPER_BODY_JOINT_IDS,
+            "flatten_steps_dim": False,
+        },
+    )
+    cfg.observations.disc_demo.ref_joint_vel = ObsTerm(
+        func=mdp.ref_selected_joint_vel,
+        params={
+            "animation": ANIMATION_TERM_NAME,
+            "joint_ids": G1_LAB_UPPER_BODY_JOINT_IDS,
+            "flatten_steps_dim": False,
+        },
+    )
+    cfg.observations.disc_demo.ref_key_body_pos_b = ObsTerm(
+        func=mdp.ref_selected_key_body_pos_b,
+        params={
+            "animation": ANIMATION_TERM_NAME,
+            "key_body_ids": G1_UPPER_KEY_BODY_IDS,
+            "flatten_steps_dim": False,
+        },
+    )
+
+
 @configclass
 class G1AmpRewards():
     """Reward terms for the MDP."""
@@ -354,7 +538,7 @@ class G1StandScaledAmpRewards(G1AmpRewards):
     )
     low_command_motion = RewTerm(
         func=mdp.low_command_motion_l2,
-        weight=-2.0,
+        weight=0.0,
         params={
             "command_name": "base_velocity",
             "command_threshold": 0.1,
@@ -366,6 +550,94 @@ class G1StandScaledAmpRewards(G1AmpRewards):
         func=mdp.root_height_below_target_l2,
         weight=-20.0,
         params={"target_height": 0.75},
+    )
+
+
+@configclass
+class G1SplitPolicyHeightScanRewards(G1StandScaledAmpRewards):
+    """Split-policy reward layout: lower body default-pose L1 and upper command-scaled posture."""
+
+    dof_torques_l2 = None
+    dof_acc_l2 = None
+    action_rate_l2 = None
+    joint_deviation_hip = None
+    joint_deviation_waist = None
+
+    dof_torques_l2_lower = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=-2.0e-6,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=G1_LAB_LOWER_BODY_JOINT_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
+    dof_torques_l2_upper = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=-2.0e-6,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=G1_LAB_UPPER_BODY_JOINT_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
+    dof_acc_l2_lower = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=-1.0e-7,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=G1_LAB_LOWER_BODY_JOINT_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
+    dof_acc_l2_upper = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=-1.0e-7,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=G1_LAB_UPPER_BODY_JOINT_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
+    action_rate_l2_lower = RewTerm(
+        func=mdp.action_rate_l2_selected,
+        weight=-0.005,
+        params={"action_indices": G1_LAB_LOWER_BODY_ACTION_INDICES},
+    )
+    action_rate_l2_upper = RewTerm(
+        func=mdp.action_rate_l2_selected,
+        weight=-0.005,
+        params={"action_indices": G1_LAB_UPPER_BODY_ACTION_INDICES},
+    )
+    dof_pos_limits_upper = RewTerm(
+        func=mdp.joint_pos_limits,
+        weight=-0.25,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=G1_LAB_UPPER_BODY_JOINT_NAMES,
+                preserve_order=True,
+            )
+        },
+    )
+    joint_deviation_lower_body = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=G1_LAB_LOWER_BODY_JOINT_NAMES,
+                preserve_order=True,
+            ),
+        },
     )
 
 
@@ -871,6 +1143,33 @@ class G1MixedAmpHeightScanEnvCfg(G1MixedStandScaledAmpEnvCfg):
             min_mean_episode_length=0.0,
             min_learning_iteration=STAND_REWARD_MIN_LEARNING_ITERATION,
         )
+
+
+@configclass
+class G1SplitPolicyHeightScanEnvCfg(G1MixedStandScaledAmpEnvCfg):
+    """Mixed G1 AMP height-scan task with split actor heads and upper-body AMP."""
+
+    rewards: G1SplitPolicyHeightScanRewards = G1SplitPolicyHeightScanRewards()
+
+    def __post_init__(self):
+        super().__post_init__()
+        enable_packed_actor_policy_history(self)
+        enable_height_scan_observations(self, policy_proprio_history_length=None)
+        enable_upper_body_amp_discriminator(self)
+        self.rewards.root_height_below_target.func = mdp.root_height_below_target_l2_after_mean_episode_length
+        self.rewards.root_height_below_target.params["min_mean_episode_length"] = 0.0
+        self.rewards.root_height_below_target.params["min_learning_iteration"] = STAND_REWARD_MIN_LEARNING_ITERATION
+
+
+@configclass
+class G1MixedAmpHeightScanWfcEnvCfg(G1MixedAmpHeightScanEnvCfg):
+    """Mixed G1 AMP height-scan task on cached terrain-generator WFC meshes."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        enable_wfc_terrain(self)
+        # Reference-state initialization is not terrain-height aware yet.
+        self.events.reset_from_ref = None
 
 
 @configclass

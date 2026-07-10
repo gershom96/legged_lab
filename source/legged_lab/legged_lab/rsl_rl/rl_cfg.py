@@ -65,6 +65,60 @@ class RslRlPpoActorCriticHeightScanCfg(RslRlPpoActorCriticCfg):
     }
     """CNN configuration for the critic height-scan encoder."""
 
+
+@configclass
+class RslRlPpoActorCriticSplitHeightScanCfg(RslRlPpoActorCriticHeightScanCfg):
+    """Height-scan actor-critic with separate lower-body and upper-body actor heads."""
+
+    class_name: str = "ActorCriticSplitHeightScan"
+    """The policy class name."""
+
+    lower_action_indices: tuple[int, ...] = (
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        13,
+        14,
+        17,
+        18,
+    )
+    """G1 lower-body plus waist action indices in Isaac Lab action order."""
+
+    upper_action_indices: tuple[int, ...] = (
+        11,
+        12,
+        15,
+        16,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+    )
+    """G1 upper-body action indices in Isaac Lab action order."""
+
+    lower_init_noise_std: float = 1.0
+    """Initial Gaussian std for the lower-body actor head."""
+
+    upper_init_noise_std: float = 0.6
+    """Initial Gaussian std for the upper-body actor head."""
+
+    num_value_outputs: int = 2
+    """Number of critic value outputs. Split-policy PPO uses lower and upper value streams."""
+
 ############################
 # Algorithm configurations #
 ############################
@@ -78,6 +132,9 @@ class RslRlPpoAmpAlgorithmCfg(RslRlPpoAlgorithmCfg):
 
     amp_cfg: RslRlAmpCfg = RslRlAmpCfg()
     """Configuration for the AMP (Adversarial Motion Priors) in the training."""
+
+    split_reward_cfg: dict | None = None
+    """Optional lower/upper reward routing configuration for split-policy AMP."""
 
 
 #########################

@@ -3,7 +3,12 @@ import os
 from isaaclab.utils import configclass
 
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlSymmetryCfg
-from legged_lab.rsl_rl import RslRlPpoAmpAlgorithmCfg, RslRlAmpCfg, RslRlPpoActorCriticHeightScanCfg
+from legged_lab.rsl_rl import (
+    RslRlPpoAmpAlgorithmCfg,
+    RslRlAmpCfg,
+    RslRlPpoActorCriticHeightScanCfg,
+    RslRlPpoActorCriticSplitHeightScanCfg,
+)
 from legged_lab import LEGGED_LAB_ROOT_DIR
 from legged_lab.tasks.locomotion.amp.mdp.symmetry import g1
 
@@ -416,6 +421,61 @@ class G1MixedHeightScanAmpRslRlOnPolicyRunnerAmpCfg(G1MixedStandScaledAmpRslRlOn
     )
     policy = RslRlPpoActorCriticHeightScanCfg(
         init_noise_std=1.0,
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        actor_obs_normalization=False,
+        critic_obs_normalization=False,
+        activation="elu",
+        height_scan_shape=(17, 11),
+        critic_height_scan_history_length=5,
+    )
+
+
+@configclass
+class G1SplitPolicyHeightScanAmpRslRlOnPolicyRunnerAmpCfg(G1MixedHeightScanAmpRslRlOnPolicyRunnerAmpCfg):
+    experiment_name = "g1_split_policy_heightscan"
+    wandb_project = "g1_split_policy_heightscan"
+    algorithm = g1_mixed_stand_scaled_amp_algorithm_cfg(
+        min_mean_episode_length=float(os.environ.get("LEGGED_LAB_AMP_MIN_MEAN_EPISODE_LENGTH", "0.0")),
+        learning_rate=1.0e-4,
+        disc_learning_rate=1.0e-4,
+    )
+    algorithm.class_name = "PPOAMPSplit"
+    algorithm.split_reward_cfg = {
+        "strict": True,
+        "lower": {
+            "track_lin_vel_xy_exp": 1.0,
+            "track_ang_vel_z_exp": 1.0,
+            "feet_air_time": 1.0,
+            "feet_slide": 1.0,
+            "flat_orientation_l2": 1.0,
+            "ang_vel_xy_l2": 1.0,
+            "lin_vel_z_l2": 1.0,
+            "root_height_below_target": 1.0,
+            "dof_torques_l2_lower": 1.0,
+            "dof_acc_l2_lower": 1.0,
+            "action_rate_l2_lower": 1.0,
+            "dof_pos_limits": 1.0,
+            "joint_deviation_lower_body": 1.0,
+            "termination_penalty": 1.0,
+        },
+        "upper": {
+            "joint_deviation_arms": 1.0,
+            "dof_torques_l2_upper": 1.0,
+            "dof_acc_l2_upper": 1.0,
+            "action_rate_l2_upper": 1.0,
+            "dof_pos_limits_upper": 1.0,
+            "flat_orientation_l2": 0.25,
+            "ang_vel_xy_l2": 0.5,
+            "lin_vel_z_l2": 0.25,
+            "root_height_below_target": 0.25,
+            "termination_penalty": 0.5,
+        },
+    }
+    policy = RslRlPpoActorCriticSplitHeightScanCfg(
+        init_noise_std=1.0,
+        lower_init_noise_std=1.0,
+        upper_init_noise_std=0.6,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         actor_obs_normalization=False,

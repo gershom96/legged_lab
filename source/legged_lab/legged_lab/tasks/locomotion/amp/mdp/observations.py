@@ -124,3 +124,65 @@ def height_scan(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg, offset: float 
     """
     sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
     return sensor.data.pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[..., 2] - offset
+
+
+def selected_joint_pos(
+    env: ManagerBasedEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Return joint positions for a resolved joint subset."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset.data.joint_pos[:, asset_cfg.joint_ids]
+
+
+def selected_joint_vel(
+    env: ManagerBasedEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Return joint velocities for a resolved joint subset."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset.data.joint_vel[:, asset_cfg.joint_ids]
+
+
+def ref_selected_joint_pos(
+    env: ManagerBasedAnimationEnv,
+    animation: str,
+    joint_ids: list[int] | tuple[int, ...],
+    flatten_steps_dim: bool = True,
+) -> torch.Tensor:
+    """Return reference joint positions for a fixed motion-data joint subset."""
+    animation_term: AnimationTerm = env.animation_manager.get_term(animation)
+    ref_dof_pos = animation_term.get_dof_pos()[..., list(joint_ids)]
+    if flatten_steps_dim:
+        return ref_dof_pos.reshape(env.num_envs, -1)
+    return ref_dof_pos
+
+
+def ref_selected_joint_vel(
+    env: ManagerBasedAnimationEnv,
+    animation: str,
+    joint_ids: list[int] | tuple[int, ...],
+    flatten_steps_dim: bool = True,
+) -> torch.Tensor:
+    """Return reference joint velocities for a fixed motion-data joint subset."""
+    animation_term: AnimationTerm = env.animation_manager.get_term(animation)
+    ref_dof_vel = animation_term.get_dof_vel()[..., list(joint_ids)]
+    if flatten_steps_dim:
+        return ref_dof_vel.reshape(env.num_envs, -1)
+    return ref_dof_vel
+
+
+def ref_selected_key_body_pos_b(
+    env: ManagerBasedAnimationEnv,
+    animation: str,
+    key_body_ids: list[int] | tuple[int, ...],
+    flatten_steps_dim: bool = True,
+) -> torch.Tensor:
+    """Return reference body-frame key-body positions for selected key bodies."""
+    animation_term: AnimationTerm = env.animation_manager.get_term(animation)
+    ref_key_body_pos = animation_term.get_key_body_pos_b()[:, :, list(key_body_ids), :]
+    if flatten_steps_dim:
+        return ref_key_body_pos.reshape(env.num_envs, -1)
+    num_envs = ref_key_body_pos.shape[0]
+    num_steps = ref_key_body_pos.shape[1]
+    return ref_key_body_pos.reshape(num_envs, num_steps, -1)

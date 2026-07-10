@@ -135,6 +135,26 @@ gym.register(
 )
 
 gym.register(
+    id="LeggedLab-Isaac-AMP-G1-Mixed-HeightScan-WFC-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1MixedAmpHeightScanWfcEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1MixedHeightScanAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
+    id="LeggedLab-Isaac-AMP-G1-SplitPolicy-HeightScan-v0",
+    entry_point="legged_lab.envs:ManagerBasedAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.g1_amp_env_cfg:G1SplitPolicyHeightScanEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1SplitPolicyHeightScanAmpRslRlOnPolicyRunnerAmpCfg",
+    },
+)
+
+gym.register(
     id="LeggedLab-Isaac-AMP-G1-Mixed-History-v0",
     entry_point="legged_lab.envs:ManagerBasedAmpEnv",
     disable_env_checker=True,
