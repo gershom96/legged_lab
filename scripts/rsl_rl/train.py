@@ -20,6 +20,38 @@ parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument("--video_interval", type=int, default=2000, help="Interval between video recordings (in steps).")
+parser.add_argument(
+    "--eval_video",
+    action="store_true",
+    default=False,
+    help="Record in-process per-curriculum videos during training.",
+)
+parser.add_argument(
+    "--eval_video_interval",
+    type=int,
+    default=None,
+    help="Eval-video interval in environment steps. Defaults to --video_interval.",
+)
+parser.add_argument(
+    "--eval_video_length",
+    type=int,
+    default=None,
+    help="Length of each in-process eval video. Defaults to --video_length.",
+)
+parser.add_argument("--eval_num_envs", type=int, default=1, help=argparse.SUPPRESS)
+parser.add_argument("--eval_task", type=str, default=None, help=argparse.SUPPRESS)
+parser.add_argument(
+    "--eval_terrain_num_cols",
+    type=int,
+    default=1,
+    help=argparse.SUPPRESS,
+)
+parser.add_argument(
+    "--eval_force_terrain_level",
+    type=int,
+    default=None,
+    help="Record only this terrain row. Defaults to all active rows in the training env.",
+)
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
@@ -41,7 +73,7 @@ AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
 
 # always enable cameras to record video
-if args_cli.video:
+if args_cli.video or args_cli.eval_video:
     args_cli.enable_cameras = True
 
 # clear out sys.argv for Hydra
@@ -96,6 +128,8 @@ from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import dump_yaml
 
 from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
+
+from curriculum_video import InProcessCurriculumVideoRecorder
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
@@ -263,6 +297,26 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         runner.alg.policy.load_state_dict(warm_start_checkpoint["model_state_dict"])
     if args_cli.reset_policy_std is not None:
         _reset_policy_action_std(runner.alg.policy, args_cli.reset_policy_std)
+
+    if args_cli.eval_video:
+        eval_interval = args_cli.eval_video_interval or args_cli.video_interval
+        if eval_interval <= 0:
+            raise ValueError(f"--eval_video_interval must be positive, got {eval_interval}.")
+        if runner.logger.disable_logs:
+            print("[INFO]: In-process eval videos are disabled on non-zero distributed ranks.")
+        else:
+            runner.video_recorder = InProcessCurriculumVideoRecorder(
+                runner.env,
+                log_dir=log_dir,
+                interval_steps=eval_interval,
+                video_length=args_cli.eval_video_length or args_cli.video_length,
+                force_terrain_level=args_cli.eval_force_terrain_level,
+                logger=runner.logger,
+            )
+            print(
+                "[INFO]: Recording in-process curriculum videos "
+                f"every {eval_interval} env steps for {args_cli.eval_video_length or args_cli.video_length} steps."
+            )
 
     # dump the configuration into log-directory
     os.makedirs(os.path.join(log_dir, "params"), exist_ok=True)

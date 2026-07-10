@@ -7,6 +7,7 @@ import joblib
 import numpy as np
 import torch
 import isaaclab.sim as sim_utils
+import isaaclab.terrains as terrain_gen
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
@@ -28,7 +29,7 @@ import legged_lab.tasks.locomotion.amp.mdp as mdp
 from legged_lab.tasks.locomotion.amp.amp_env_cfg import LocomotionAmpEnvCfg
 from legged_lab import LEGGED_LAB_ROOT_DIR
 from legged_lab.sensors import RayCasterArrayCfg
-from legged_lab.terrains import WfcTerrainGeneratorCfg
+from legged_lab.terrains import FiveStageTerrainGeneratorCfg, WfcTerrainGeneratorCfg
 
 ##
 # Pre-defined configs
@@ -262,7 +263,7 @@ def enable_height_scan_observations(
     cfg.scene.height_scanner = RayCasterArrayCfg(
         prim_path="{ENV_REGEX_NS}/Robot/" + body_name,
         offset=RayCasterArrayCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
-        attach_yaw_only=True,
+        ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=resolution, size=size),
         debug_vis=debug_vis,
         mesh_prim_paths=["/World/ground"],
@@ -298,6 +299,100 @@ def _env_bool(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+def g1_five_stage_terrain_generator_cfg() -> FiveStageTerrainGeneratorCfg:
+    """Build a conservative five-stage rough-terrain curriculum for G1."""
+    return FiveStageTerrainGeneratorCfg(
+        seed=int(os.environ.get("LEGGED_LAB_TERRAIN_SEED", "0")),
+        curriculum=True,
+        size=_env_tuple("LEGGED_LAB_TERRAIN_SIZE", (20.0, 20.0), float),
+        border_width=float(os.environ.get("LEGGED_LAB_TERRAIN_BORDER_WIDTH", "20.0")),
+        num_rows=5,
+        num_cols=int(os.environ.get("LEGGED_LAB_TERRAIN_NUM_COLS", "16")),
+        horizontal_scale=float(os.environ.get("LEGGED_LAB_TERRAIN_HORIZONTAL_SCALE", "0.1")),
+        vertical_scale=float(os.environ.get("LEGGED_LAB_TERRAIN_VERTICAL_SCALE", "0.005")),
+        slope_threshold=float(os.environ.get("LEGGED_LAB_TERRAIN_SLOPE_THRESHOLD", "0.75")),
+        use_cache=_env_bool("LEGGED_LAB_TERRAIN_USE_CACHE"),
+        cache_dir=os.environ.get("LEGGED_LAB_TERRAIN_CACHE_DIR", "/tmp/isaaclab/terrains/g1_five_stage"),
+        sub_terrains={
+            "flat": terrain_gen.MeshPlaneTerrainCfg(),
+            "random_rough_mild": terrain_gen.HfRandomUniformTerrainCfg(
+                noise_range=(0.005, 0.035), noise_step=0.005, border_width=0.25
+            ),
+            "wave_mild": terrain_gen.HfWaveTerrainCfg(amplitude_range=(0.005, 0.03), num_waves=2),
+            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+                noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25
+            ),
+            "discrete_obstacles": terrain_gen.HfDiscreteObstaclesTerrainCfg(
+                obstacle_width_range=(0.20, 0.55),
+                obstacle_height_range=(0.03, 0.12),
+                num_obstacles=20,
+                platform_width=2.0,
+            ),
+            "boxes_low": terrain_gen.MeshRandomGridTerrainCfg(
+                grid_width=0.45, grid_height_range=(0.03, 0.12), platform_width=2.0
+            ),
+            "pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
+                slope_range=(0.0, 0.40), platform_width=2.0, border_width=0.25
+            ),
+            "pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
+                slope_range=(0.0, 0.40), platform_width=2.0, border_width=0.25
+            ),
+            "wave": terrain_gen.HfWaveTerrainCfg(amplitude_range=(0.03, 0.12), num_waves=3),
+            "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+                step_height_range=(0.02, 0.16),
+                step_width=0.32,
+                platform_width=3.0,
+                border_width=1.0,
+                holes=False,
+            ),
+            "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+                step_height_range=(0.02, 0.16),
+                step_width=0.32,
+                platform_width=3.0,
+                border_width=1.0,
+                holes=False,
+            ),
+            "stepping_stones": terrain_gen.HfSteppingStonesTerrainCfg(
+                stone_height_max=0.10,
+                stone_width_range=(0.55, 1.0),
+                stone_distance_range=(0.08, 0.35),
+                holes_depth=-0.30,
+                platform_width=2.0,
+            ),
+            "gap": terrain_gen.MeshGapTerrainCfg(gap_width_range=(0.08, 0.35), platform_width=2.0),
+            "pit": terrain_gen.MeshPitTerrainCfg(pit_depth_range=(0.05, 0.25), platform_width=2.5, double_pit=False),
+            "rails": terrain_gen.MeshRailsTerrainCfg(
+                rail_thickness_range=(0.05, 0.16),
+                rail_height_range=(0.04, 0.14),
+                platform_width=2.0,
+            ),
+        },
+    )
+
+
+def enable_five_stage_terrain_curriculum(cfg: LocomotionAmpEnvCfg):
+    """Use a five-row terrain curriculum and enable per-env terrain level updates."""
+    cfg.scene.terrain.terrain_type = "generator"
+    cfg.scene.terrain.terrain_generator = g1_five_stage_terrain_generator_cfg()
+    cfg.scene.terrain.use_terrain_origins = True
+    cfg.scene.terrain.max_init_terrain_level = int(os.environ.get("LEGGED_LAB_TERRAIN_MAX_INIT_LEVEL", "0"))
+    cfg.curriculum.terrain_levels = CurrTerm(
+        func=mdp.terrain_levels_amp,
+        params={
+            "min_command_speed": float(os.environ.get("LEGGED_LAB_TERRAIN_MIN_COMMAND_SPEED", "0.2")),
+            "distance_success_ratio": float(os.environ.get("LEGGED_LAB_TERRAIN_DISTANCE_SUCCESS_RATIO", "0.65")),
+            "distance_failure_ratio": float(os.environ.get("LEGGED_LAB_TERRAIN_DISTANCE_FAILURE_RATIO", "0.25")),
+            "terrain_success_ratio": float(os.environ.get("LEGGED_LAB_TERRAIN_SUCCESS_RATIO", "0.45")),
+            "min_lin_vel_tracking": float(os.environ.get("LEGGED_LAB_TERRAIN_MIN_LIN_TRACKING", "0.6")),
+            "min_ang_vel_tracking": float(os.environ.get("LEGGED_LAB_TERRAIN_MIN_ANG_TRACKING", "0.2")),
+            "replay_probability": float(os.environ.get("LEGGED_LAB_TERRAIN_REPLAY_PROBABILITY", "0.15")),
+            "flat_replay_probability": float(
+                os.environ.get("LEGGED_LAB_TERRAIN_FLAT_REPLAY_PROBABILITY", "0.05")
+            ),
+        },
+    )
 
 
 def enable_wfc_terrain(cfg: LocomotionAmpEnvCfg):
@@ -1159,6 +1254,17 @@ class G1SplitPolicyHeightScanEnvCfg(G1MixedStandScaledAmpEnvCfg):
         self.rewards.root_height_below_target.func = mdp.root_height_below_target_l2_after_mean_episode_length
         self.rewards.root_height_below_target.params["min_mean_episode_length"] = 0.0
         self.rewards.root_height_below_target.params["min_learning_iteration"] = STAND_REWARD_MIN_LEARNING_ITERATION
+
+
+@configclass
+class G1SplitPolicyHeightScanTerrainCurriculumEnvCfg(G1SplitPolicyHeightScanEnvCfg):
+    """Split-policy height-scan task on the five-stage non-WFC terrain curriculum."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        enable_five_stage_terrain_curriculum(self)
+        # Reference-state initialization is not terrain-height aware.
+        self.events.reset_from_ref = None
 
 
 @configclass
