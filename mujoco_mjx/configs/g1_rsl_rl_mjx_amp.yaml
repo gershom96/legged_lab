@@ -1,0 +1,206 @@
+env:
+  robot_xml: source/legged_lab/legged_lab/data/Robots/Unitree/g1_29dof/g1_29dof.xml
+  num_envs: 4096
+  device: cuda:0
+  sim_dt: 0.005
+  decimation: 4
+  episode_length_s: 20.0
+  action_dim: 29
+  split_policy: true
+  upper_body_amp: true
+  mjx_impl: warp
+  naconmax: 1024
+  # Warp allocates one global broadphase pool.  The 4,096-env terrain run
+  # exceeded 64 contacts/env (peak request: 267,914 contacts), so retain a
+  # small buffer above the required 66 contacts/env.
+  contacts_per_env: 68
+  njmax: 2048
+  seed: 42
+  command_resampling_time_s: 10.0
+  standing_env_ratio: 0.15
+  command_lin_vel_x: [-1.0, 1.0]
+  command_lin_vel_y: [-1.0, 1.0]
+  command_ang_vel_z: [-1.0, 1.0]
+  min_root_height: 0.2
+  max_tilt_radians: 1.0471975511965976
+  root_height_reward_start_iteration: 40000
+
+observations:
+  actor_history_length: 5
+  discriminator_history_length: 4
+  height_scan: true
+  height_scan_size: [1.6, 1.0]
+  height_scan_resolution: 0.1
+  height_scan_offset: 0.5
+  # Observation convention matches Isaac's mdp.height_scan:
+  # torso_link frame z - terrain hit z - height_scan_offset.
+  height_scan_noise: 0.01
+  critic_height_scan_history_length: 5
+  # Converted Isaac checkpoints use scan first.  Old native checkpoints are
+  # detected and switched to their recorded legacy layout by the launcher.
+  observation_layout: isaac_scan_first_v2
+
+# Disabled by default: the old native run had no batched model randomization,
+# and this approximation is not an Isaac-equivalent replacement.
+domain_randomization:
+  enabled: false
+  static_friction_range: [0.3, 1.6]
+  dynamic_friction_range: [0.3, 1.2]
+  material_num_buckets: 64
+  base_mass_add_range: [-3.0, 3.0]
+  com_range: [-0.03, 0.03]
+  limb_mass_scale_range: [0.8, 1.2]
+  actuator_gain_scale_range: [0.8, 1.2]
+  armature_scale_range: [0.8, 1.2]
+  push_interval_s: [10.0, 20.0]
+  push_linear_velocity_range: [-0.5, 0.5]
+  push_yaw_velocity_range: [-1.0, 1.0]
+
+motion:
+  directory: /home/gershom/Documents/shared_datasets/legged_lab_g1_mixed_default_motionbricks
+  default_weight: 0.2
+  motionbricks_weight: 0.8
+  max_files: 0
+  seed: 42
+
+terrain:
+  type: curriculum
+  size: [45.0, 45.0]
+  horizontal_scale: 0.1
+  difficulty: 0.0
+  seed: 42
+  center_platform_radius: 1.0
+  curriculum:
+    enabled: true
+    safe_half_extent: 20.0
+    start_stage: 0
+    current_probability: 0.70
+    previous_probability: 0.20
+    easier_probability: 0.10
+    promotion_window: 100
+    min_stage_iterations: 400
+    min_episode_length: 900.0
+    min_lin_tracking: 0.60
+    min_ang_tracking: 0.20
+    max_termination_rate: 0.05
+  ean_root: /home/gershom/Documents/gershom96/Embodiment-Aware-Nav
+  ean_scene_config: null
+  wfc_output_dir: mujoco_mjx/outputs/wfc
+
+rsl_rl:
+  seed: 42
+  device: cuda:0
+  num_steps_per_env: 24
+  max_iterations: 50000
+  obs_groups:
+    policy: [policy]
+    critic: [critic]
+    discriminator: [disc]
+    discriminator_demonstration: [disc_demo]
+  clip_actions: null
+  save_interval: 200
+  experiment_name: g1_mujoco_mjx_split_policy_heightscan
+  run_name: ""
+  logger: tensorboard
+  neptune_project: isaaclab
+  wandb_project: g1_mujoco_mjx_split_policy_heightscan
+  class_name: AMPRunner
+  algorithm:
+    class_name: PPOAMPSplit
+    num_learning_epochs: 5
+    num_mini_batches: 4
+    micro_batch_size: 4096
+    learning_rate: 0.0001
+    schedule: adaptive
+    gamma: 0.99
+    lam: 0.95
+    entropy_coef: 0.01
+    desired_kl: 0.01
+    max_grad_norm: 1.0
+    optimizer: adam
+    value_loss_coef: 1.0
+    use_clipped_value_loss: true
+    clip_param: 0.2
+    normalize_advantage_per_mini_batch: false
+    share_cnn_encoders: false
+    rnd_cfg: null
+    symmetry_cfg:
+      use_data_augmentation: true
+      use_mirror_loss: true
+      data_augmentation_func: mujoco_mjx.rsl_rl_mujoco.native_symmetry:augment_policy_batch
+      mirror_loss_coeff: 0.1
+    amp_cfg:
+      disc_obs_buffer_size: 100
+      grad_penalty_scale: 10.0
+      disc_trunk_weight_decay: 0.0001
+      disc_linear_weight_decay: 0.01
+      disc_learning_rate: 0.0001
+      disc_max_grad_norm: 1.0
+      min_mean_episode_length: 0.0
+      amp_discriminator:
+        hidden_dims: [1024, 512]
+        activation: elu
+        style_reward_scale: 5.0
+        task_style_lerp: 0.4
+        disc_obs_feature_weights: null
+      loss_type: LSGAN
+    split_reward_cfg:
+      strict: true
+      lower:
+        track_lin_vel_xy_exp: 1.0
+        track_ang_vel_z_exp: 1.0
+        feet_air_time: 1.0
+        feet_slide: 1.0
+        flat_orientation_l2: 1.0
+        ang_vel_xy_l2: 1.0
+        lin_vel_z_l2: 1.0
+        root_height_below_target: 1.0
+        dof_torques_l2_lower: 1.0
+        dof_acc_l2_lower: 1.0
+        action_rate_l2_lower: 1.0
+        dof_pos_limits: 1.0
+        joint_deviation_lower_body: 1.0
+        termination_penalty: 1.0
+      upper:
+        joint_deviation_arms: 1.0
+        dof_torques_l2_upper: 1.0
+        dof_acc_l2_upper: 1.0
+        action_rate_l2_upper: 1.0
+        dof_pos_limits_upper: 1.0
+        flat_orientation_l2: 0.25
+        ang_vel_xy_l2: 0.5
+        lin_vel_z_l2: 0.25
+        root_height_below_target: 0.25
+        termination_penalty: 0.5
+  policy:
+    class_name: ActorCriticSplitHeightScan
+    init_noise_std: 1.0
+    lower_init_noise_std: 1.0
+    upper_init_noise_std: 0.6
+    noise_std_type: scalar
+    state_dependent_std: false
+    actor_obs_normalization: false
+    critic_obs_normalization: false
+    actor_hidden_dims: [512, 256, 128]
+    critic_hidden_dims: [512, 256, 128]
+    activation: elu
+    height_scan_shape: [17, 11]
+    critic_height_scan_history_length: 5
+    height_scan_ordering: xy
+    num_value_outputs: 2
+    lower_action_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 17, 18]
+    upper_action_indices: [11, 12, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+    actor_cnn_cfg:
+      output_channels: [16, 32, 64]
+      kernel_size: [3, 3, 3]
+      stride: [1, 2, 2]
+      padding: zeros
+      global_pool: avg
+      flatten: true
+    critic_cnn_cfg:
+      output_channels: [16, 32, 64]
+      kernel_size: [3, 3, 3]
+      stride: [1, 2, 2]
+      padding: zeros
+      global_pool: avg
+      flatten: true
