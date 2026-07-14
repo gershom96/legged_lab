@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import tempfile
+from pathlib import Path
 import numpy as np
 import enum
 import joblib
@@ -38,6 +40,110 @@ class MotionDataTerm(ManagerTermBase):
             f"Motion data directory {cfg.motion_data_dir} does not exist."
             
         self._load_motion_data()
+
+    _CACHE_VERSION = 1
+    _CACHE_TENSOR_NAMES = (
+        "motion_fps",
+        "motion_dt",
+        "motion_durations",
+        "motion_num_frames",
+        "motion_loop_modes",
+        "root_pos_w",
+        "root_quat",
+        "root_vel_w",
+        "root_ang_vel_w",
+        "dof_pos",
+        "dof_vel",
+        "key_body_pos_w",
+        "motion_start_indices",
+    )
+
+    def _cache_path(self) -> Path | None:
+        if not self.cfg.motion_data_cache_path:
+            return None
+        return Path(self.cfg.motion_data_cache_path).expanduser()
+
+    def _source_manifest(self, motion_names: tuple[str, ...]) -> tuple[tuple[str, int, int], ...]:
+        """Return a cheap identity check for the exact ordered source clip set."""
+        manifest = []
+        for motion_name in motion_names:
+            stat = os.stat(os.path.join(self.cfg.motion_data_dir, f"{motion_name}.pkl"))
+            manifest.append((motion_name, stat.st_size, stat.st_mtime_ns))
+        return tuple(manifest)
+
+    def _set_motion_weights(self, motion_names: tuple[str, ...]) -> None:
+        weights = [self.motion_weights_dict[name] for name in motion_names]
+        self.motion_weights = torch.tensor(weights, dtype=torch.float32, device=self.device)
+        self.motion_weights = self.motion_weights / torch.sum(self.motion_weights)
+
+    def _try_load_motion_cache(
+        self,
+        motion_names: tuple[str, ...],
+        source_manifest: tuple[tuple[str, int, int], ...],
+    ) -> bool:
+        cache_path = self._cache_path()
+        if cache_path is None or not cache_path.is_file():
+            return False
+
+        try:
+            cache = torch.load(cache_path, map_location="cpu", weights_only=False)
+            if (
+                not isinstance(cache, dict)
+                or cache.get("version") != self._CACHE_VERSION
+                or tuple(cache.get("motion_names", ())) != motion_names
+                or tuple(cache.get("source_manifest", ())) != source_manifest
+            ):
+                print(f"[Motion Data Manager] Ignoring stale motion cache: {cache_path}")
+                return False
+
+            tensors = cache.get("tensors")
+            if not isinstance(tensors, dict) or any(name not in tensors for name in self._CACHE_TENSOR_NAMES):
+                print(f"[Motion Data Manager] Ignoring incomplete motion cache: {cache_path}")
+                return False
+
+            for name in self._CACHE_TENSOR_NAMES:
+                value = tensors[name]
+                if not isinstance(value, torch.Tensor):
+                    print(f"[Motion Data Manager] Ignoring invalid motion cache tensor '{name}': {cache_path}")
+                    return False
+                setattr(self, name, value.to(self.device))
+
+            self._set_motion_weights(motion_names)
+            self.num_dofs = self.dof_pos.shape[1]
+            self.num_key_bodies = self.key_body_pos_w.shape[1]
+            self.motion_ids = torch.arange(self.get_num_motions(), dtype=torch.long, device=self.device)
+            print(f"[Motion Data Manager] Loaded packed motion cache: {cache_path}")
+            return True
+        except Exception as exc:
+            print(f"[Motion Data Manager] Ignoring unreadable motion cache {cache_path}: {exc}")
+            return False
+
+    def _write_motion_cache(
+        self,
+        motion_names: tuple[str, ...],
+        source_manifest: tuple[tuple[str, int, int], ...],
+    ) -> None:
+        cache_path = self._cache_path()
+        if cache_path is None:
+            return
+
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tensors = {name: getattr(self, name).detach().cpu() for name in self._CACHE_TENSOR_NAMES}
+        payload = {
+            "version": self._CACHE_VERSION,
+            "motion_names": motion_names,
+            "source_manifest": source_manifest,
+            "tensors": tensors,
+        }
+        fd, temporary_path = tempfile.mkstemp(prefix=f".{cache_path.name}.", suffix=".tmp", dir=cache_path.parent)
+        os.close(fd)
+        try:
+            torch.save(payload, temporary_path)
+            os.replace(temporary_path, cache_path)
+            print(f"[Motion Data Manager] Wrote packed motion cache: {cache_path}")
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
         
     def _load_motion_data(self):
         # list the motion data files in the directory
@@ -46,6 +152,7 @@ class MotionDataTerm(ManagerTermBase):
             raise ValueError(f"No motion data files with .pkl extension found in {self.cfg.motion_data_dir}.")
         
         self.motion_weights_dict = self.cfg.motion_data_weights
+        motion_names = tuple(self.motion_weights_dict.keys())
 
         self.motion_durations = []
         self.motion_fps = []
@@ -63,15 +170,27 @@ class MotionDataTerm(ManagerTermBase):
         self.key_body_pos_w = []
 
         # only load the motion data files that are in the motion weights dict
-        for motion_name, motion_weight in self.motion_weights_dict.items():
+        for motion_name in motion_names:
             # check if the motion file name is valid
             motion_file = f"{motion_name}.pkl"
             if motion_file not in motion_files:
                 raise ValueError(f"Motion name {motion_name} defined in motion weights not found in motion data directory {self.cfg.motion_data_dir}. Available files: {motion_files}")
 
+        source_manifest = self._source_manifest(motion_names)
+        if self._try_load_motion_cache(motion_names, source_manifest):
+            return
+
+        # Only load the motion data files that are in the motion weights dict.
+        total_motions = len(motion_names)
+        print(f"[Motion Data Manager] Loading {total_motions} motion clips from {self.cfg.motion_data_dir}...")
+        for motion_index, motion_name in enumerate(motion_names, start=1):
+            motion_weight = self.motion_weights_dict[motion_name]
+            motion_file = f"{motion_name}.pkl"
+
             # load the motion data file
             motion_path = os.path.join(self.cfg.motion_data_dir, motion_file)
-            print(f"[Motion Data Manager] Loading motion data from {motion_path}...")
+            if motion_index == 1 or motion_index == total_motions or motion_index % 250 == 0:
+                print(f"[Motion Data Manager] Loading clip {motion_index}/{total_motions}: {motion_file}")
             motion_raw_data = joblib.load(motion_path)
             if not isinstance(motion_raw_data, dict):
                 raise ValueError(f"Motion data file {motion_file} does not contain a valid dictionary.")
@@ -157,7 +276,9 @@ class MotionDataTerm(ManagerTermBase):
         lengths_shifted = self.motion_num_frames.roll(1)
         lengths_shifted[0] = 0
         self.motion_start_indices = torch.cumsum(lengths_shifted, dim=0)
-        
+
+        self._write_motion_cache(motion_names, source_manifest)
+
         return
          
     # Some helper functions
@@ -339,8 +460,7 @@ class MotionDataTerm(ManagerTermBase):
             "dof_vel": dof_vel,
             "key_body_pos_b": key_body_pos_b,
         }
-        
-        
+
 class MotionDataManager(ManagerBase):
     """Manager for motion data.
     
@@ -434,6 +554,3 @@ def calc_phase(times: torch.Tensor, motion_duration: torch.Tensor, loop_mode: to
     phase = torch.clip(phase, 0.0, 1.0)
 
     return phase
-
-        
-        

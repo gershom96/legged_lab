@@ -302,19 +302,48 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 _G1_TERRAIN_STAGE_NAMES = (
-    ("flat", "random_rough_mild", "wave_mild"),
-    ("random_rough", "discrete_obstacles", "boxes_low"),
-    ("pyramid_slope", "pyramid_slope_inv", "wave"),
-    ("pyramid_stairs", "pyramid_stairs_inv"),
-    ("stepping_stones", "gap", "pit", "rails"),
+    ("flat",),
+    ("random_rough_mild",),
+    ("wave_mild",),
+    ("random_rough",),
+    ("discrete_obstacles",),
+    ("boxes_low",),
+    ("pyramid_slope",),
+    ("pyramid_slope_inv",),
+    ("wave",),
+    ("pyramid_stairs",),
+    ("pyramid_stairs_inv",),
+    ("stepping_stones",),
+    ("gap",),
+    ("pit",),
+    ("rails",),
 )
 
 _G1_TERRAIN_STAGE_DIFFICULTY_RANGES = (
+    (0.0, 0.0),
+    (0.0, 0.15),
     (0.0, 0.15),
     (0.15, 0.35),
+    (0.15, 0.35),
+    (0.15, 0.35),
+    (0.35, 0.60),
+    (0.35, 0.60),
     (0.35, 0.60),
     (0.45, 0.80),
+    (0.45, 0.80),
     (0.55, 1.0),
+    (0.55, 1.0),
+    (0.55, 1.0),
+    (0.55, 1.0),
+)
+
+_G1_TERRAIN_STAGE_ROW_GROUPS = (
+    (0,),
+    (1, 2),
+    (3, 4, 5),
+    (6, 7, 8),
+    (9, 10),
+    (11, 12, 13, 14),
 )
 
 
@@ -344,6 +373,27 @@ def _terrain_stage_names() -> tuple[tuple[str, ...], ...]:
             f"LEGGED_LAB_TERRAIN_NUM_ROWS must be in [1, {len(_G1_TERRAIN_STAGE_NAMES)}], got {num_rows}."
         )
     return _G1_TERRAIN_STAGE_NAMES[:num_rows]
+
+
+def _terrain_stage_row_groups(num_rows: int) -> tuple[tuple[int, ...], ...]:
+    raw_groups = os.environ.get("LEGGED_LAB_TERRAIN_STAGE_ROW_GROUPS")
+    if raw_groups:
+        groups = []
+        for raw_group in raw_groups.split(";"):
+            rows = tuple(int(part.strip()) for part in raw_group.split(",") if part.strip())
+            rows = tuple(row for row in rows if 0 <= row < num_rows)
+            if rows:
+                groups.append(rows)
+        if not groups:
+            raise ValueError("LEGGED_LAB_TERRAIN_STAGE_ROW_GROUPS did not contain any valid row groups.")
+        return tuple(groups)
+
+    groups = []
+    for rows in _G1_TERRAIN_STAGE_ROW_GROUPS:
+        clipped = tuple(row for row in rows if row < num_rows)
+        if clipped:
+            groups.append(clipped)
+    return tuple(groups)
 
 
 def _terrain_stage_difficulty_ranges(num_rows: int) -> tuple[tuple[float, float], ...]:
@@ -377,13 +427,14 @@ def g1_five_stage_terrain_generator_cfg() -> FiveStageTerrainGeneratorCfg:
     return FiveStageTerrainGeneratorCfg(
         seed=int(os.environ.get("LEGGED_LAB_TERRAIN_SEED", "0")),
         curriculum=True,
-        size=_env_tuple("LEGGED_LAB_TERRAIN_SIZE", (20.0, 20.0), float),
+        size=_env_tuple("LEGGED_LAB_TERRAIN_SIZE", (45.0, 45.0), float),
         border_width=float(os.environ.get("LEGGED_LAB_TERRAIN_BORDER_WIDTH", "20.0")),
         num_rows=len(stage_names),
-        num_cols=int(os.environ.get("LEGGED_LAB_TERRAIN_NUM_COLS", "16")),
-        horizontal_scale=float(os.environ.get("LEGGED_LAB_TERRAIN_HORIZONTAL_SCALE", "0.1")),
+        num_cols=int(os.environ.get("LEGGED_LAB_TERRAIN_NUM_COLS", "8")),
+        horizontal_scale=float(os.environ.get("LEGGED_LAB_TERRAIN_HORIZONTAL_SCALE", "0.2")),
         vertical_scale=float(os.environ.get("LEGGED_LAB_TERRAIN_VERTICAL_SCALE", "0.005")),
         slope_threshold=float(os.environ.get("LEGGED_LAB_TERRAIN_SLOPE_THRESHOLD", "0.75")),
+        edge_blend_width=float(os.environ.get("LEGGED_LAB_TERRAIN_EDGE_BLEND_WIDTH", "2.5")),
         use_cache=_env_bool("LEGGED_LAB_TERRAIN_USE_CACHE"),
         cache_dir=os.environ.get("LEGGED_LAB_TERRAIN_CACHE_DIR", "/tmp/isaaclab/terrains/g1_five_stage"),
         stage_sub_terrain_names=stage_names,
@@ -404,7 +455,7 @@ def g1_five_stage_terrain_generator_cfg() -> FiveStageTerrainGeneratorCfg:
                 platform_width=2.0,
             ),
             "boxes_low": terrain_gen.MeshRandomGridTerrainCfg(
-                grid_width=0.45, grid_height_range=(0.03, 0.12), platform_width=2.0
+                grid_width=0.46, grid_height_range=(0.03, 0.12), platform_width=2.0
             ),
             "pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
                 slope_range=(0.0, 0.40), platform_width=2.0, border_width=0.25
@@ -451,6 +502,14 @@ def enable_five_stage_terrain_curriculum(cfg: LocomotionAmpEnvCfg):
     cfg.scene.terrain.terrain_generator = g1_five_stage_terrain_generator_cfg()
     cfg.scene.terrain.use_terrain_origins = True
     cfg.scene.terrain.max_init_terrain_level = int(os.environ.get("LEGGED_LAB_TERRAIN_MAX_INIT_LEVEL", "0"))
+    cfg.terminations.out_of_tile = DoneTerm(
+        func=mdp.terrain_out_of_tile,
+        time_out=True,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "allowed_half_extent": float(os.environ.get("LEGGED_LAB_TERRAIN_ALLOWED_HALF_EXTENT", "20.0")),
+        },
+    )
     cfg.curriculum.terrain_levels = CurrTerm(
         func=mdp.terrain_levels_amp,
         params={
@@ -464,6 +523,10 @@ def enable_five_stage_terrain_curriculum(cfg: LocomotionAmpEnvCfg):
             "flat_replay_probability": float(
                 os.environ.get("LEGGED_LAB_TERRAIN_FLAT_REPLAY_PROBABILITY", "0.05")
             ),
+            "stage_rows": _terrain_stage_row_groups(cfg.scene.terrain.terrain_generator.num_rows),
+            "current_stage_probability": float(os.environ.get("LEGGED_LAB_TERRAIN_CURRENT_STAGE_PROB", "0.70")),
+            "previous_stage_probability": float(os.environ.get("LEGGED_LAB_TERRAIN_PREVIOUS_STAGE_PROB", "0.20")),
+            "easy_stage_probability": float(os.environ.get("LEGGED_LAB_TERRAIN_EASY_STAGE_PROB", "0.10")),
         },
     )
 
@@ -1244,6 +1307,9 @@ class G1MixedAmpEnvCfg(G1AmpEnvCfg):
             motion_names_by_prefix=motion_names_by_prefix,
             dataset_weights=dataset_weights,
         )
+        motion_cache_path = os.environ.get("LEGGED_LAB_MIXED_G1_AMP_CACHE")
+        if motion_cache_path:
+            self.motion_data.motion_dataset.motion_data_cache_path = str(Path(motion_cache_path).expanduser())
 
         self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)

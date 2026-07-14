@@ -176,10 +176,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     else:
         normalizer = None
 
-    # export policy to onnx/jit
-    export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
-    export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+    # The standard exporter only supports a single ``actor``/``student`` module.
+    # Split-height-scan policies have actor_lower and actor_upper heads instead,
+    # so skipping export here keeps playback available without changing inference.
+    if hasattr(policy_nn, "actor") or hasattr(policy_nn, "student"):
+        export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
+        export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
+        export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+    else:
+        print("[INFO] Skipping JIT/ONNX export for multi-head policy; playback uses the loaded policy directly.")
 
     dt = env.unwrapped.step_dt
 

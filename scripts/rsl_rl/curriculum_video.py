@@ -27,9 +27,9 @@ class InProcessCurriculumVideoRecorder:
         interval_steps: int,
         video_length: int,
         resolution: tuple[int, int] = (640, 360),
-        camera_target_height: float = 0.35,
-        camera_distance_scale: float = 0.60,
-        camera_height_scale: float = 0.42,
+        camera_target_height: float = 0.65,
+        camera_distance: float = 6.0,
+        camera_height: float = 3.0,
         force_terrain_level: int | None = None,
         logger=None,
     ) -> None:
@@ -45,9 +45,20 @@ class InProcessCurriculumVideoRecorder:
         self.video_length = video_length
         self.resolution = resolution
         self.camera_target_height = camera_target_height
-        self.camera_distance_scale = camera_distance_scale
-        self.camera_height_scale = camera_height_scale
-        self.tile_size = self._terrain_tile_size()
+        self.camera_distance = float(os.environ.get("LEGGED_LAB_CURRICULUM_VIDEO_CAMERA_DISTANCE", camera_distance))
+        self.camera_height = float(os.environ.get("LEGGED_LAB_CURRICULUM_VIDEO_CAMERA_HEIGHT", camera_height))
+        self.per_terrain_family = os.environ.get("LEGGED_LAB_CURRICULUM_VIDEO_PER_TERRAIN", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        self.isolate_selected_agents = os.environ.get("LEGGED_LAB_CURRICULUM_VIDEO_ISOLATE_AGENTS", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         self.force_terrain_level = force_terrain_level
         self.logger = logger
 
@@ -60,6 +71,8 @@ class InProcessCurriculumVideoRecorder:
         self.active_writers: dict[str, object] = {}
         self.active_env_ids: dict[str, int] = {}
         self.active_paths: dict[str, str] = {}
+        self.hidden_env_ids: torch.Tensor | None = None
+        self.command_debug_vis_was_enabled = False
 
     def on_step(self, learning_iteration: int) -> None:
         if self.disabled:
@@ -69,6 +82,8 @@ class InProcessCurriculumVideoRecorder:
         except Exception as exc:
             self.disabled = True
             self._close_writers()
+            self._restore_agent_visibility()
+            self._restore_command_visualizers()
             print(f"[WARN]: Disabled in-process curriculum video recorder after error: {exc}")
 
     def _on_step_impl(self, learning_iteration: int) -> None:
@@ -96,6 +111,8 @@ class InProcessCurriculumVideoRecorder:
         self.active_env_ids = selected_envs
         self.active_paths.clear()
         self.active_writers.clear()
+        self._isolate_selected_agents()
+        self._hide_command_visualizers()
 
         capture_dir = os.path.join(self.log_dir, "videos", "curriculum", f"step_{self.global_step:08d}")
         os.makedirs(capture_dir, exist_ok=True)
@@ -111,6 +128,8 @@ class InProcessCurriculumVideoRecorder:
     def _finish_capture(self) -> None:
         self._close_writers()
         self._log_wandb_videos()
+        self._restore_agent_visibility()
+        self._restore_command_visualizers()
         print(f"[INFO]: Finished curriculum videos for step {self.global_step - self.capture_step + 1}.")
         self.active_capture = False
         self.active_env_ids.clear()
@@ -146,15 +165,86 @@ class InProcessCurriculumVideoRecorder:
             env_ids = (terrain_levels == self.force_terrain_level).nonzero(as_tuple=False).flatten()
             if env_ids.numel() == 0:
                 return {}
-            return {f"level_{self.force_terrain_level}": int(env_ids[0].item())}
+            return self._select_terrain_families(terrain, env_ids, self.force_terrain_level)
 
         selected: dict[str, int] = {}
         for level in torch.unique(terrain_levels.detach()).sort().values:
             level_int = int(level.item())
             env_ids = (terrain_levels == level_int).nonzero(as_tuple=False).flatten()
             if env_ids.numel() > 0:
-                selected[f"level_{level_int}"] = int(env_ids[0].item())
+                selected.update(self._select_terrain_families(terrain, env_ids, level_int))
         return selected
+
+    def _select_terrain_families(self, terrain, env_ids: torch.Tensor, level: int) -> dict[str, int]:
+        """Select one representative per terrain family in a terrain row when requested."""
+        if not self.per_terrain_family:
+            return {f"level_{level}": int(env_ids[0].item())}
+
+        terrain_types = getattr(terrain, "terrain_types", None)
+        generator_cfg = getattr(getattr(terrain, "cfg", None), "terrain_generator", None)
+        stage_names = getattr(generator_cfg, "stage_sub_terrain_names", None)
+        if terrain_types is None or stage_names is None or not (0 <= level < len(stage_names)):
+            return {f"level_{level}": int(env_ids[0].item())}
+
+        names = stage_names[level]
+        if not names:
+            return {f"level_{level}": int(env_ids[0].item())}
+
+        selected: dict[str, int] = {}
+        for terrain_type in torch.unique(terrain_types[env_ids].detach()).sort().values:
+            terrain_type_int = int(terrain_type.item())
+            family = str(names[terrain_type_int % len(names)])
+            label = f"level_{level}_{family}"
+            family_env_ids = env_ids[terrain_types[env_ids] == terrain_type]
+            if label not in selected and family_env_ids.numel() > 0:
+                selected[label] = int(family_env_ids[0].item())
+        return selected or {f"level_{level}": int(env_ids[0].item())}
+
+    def _isolate_selected_agents(self) -> None:
+        """Hide other agents on the recorded tiles without changing physics state."""
+        if not self.isolate_selected_agents or not self.active_env_ids:
+            return
+
+        terrain = getattr(getattr(self.base_env, "scene", None), "terrain", None)
+        terrain_types = getattr(terrain, "terrain_types", None)
+        if terrain_types is None:
+            return
+
+        selected_ids = torch.tensor(
+            list(self.active_env_ids.values()), dtype=torch.long, device=self.base_env.device
+        )
+        selected_types = torch.unique(terrain_types[selected_ids])
+        all_env_ids = torch.arange(self.base_env.num_envs, device=self.base_env.device)
+        on_recorded_tiles = torch.isin(terrain_types, selected_types)
+        is_selected = torch.isin(all_env_ids, selected_ids)
+        hidden_env_ids = all_env_ids[on_recorded_tiles & ~is_selected]
+        if hidden_env_ids.numel() == 0:
+            return
+
+        self.base_env.scene["robot"].set_visibility(False, env_ids=hidden_env_ids)
+        self.hidden_env_ids = hidden_env_ids
+
+    def _restore_agent_visibility(self) -> None:
+        if self.hidden_env_ids is None:
+            return
+        self.base_env.scene["robot"].set_visibility(True, env_ids=self.hidden_env_ids)
+        self.hidden_env_ids = None
+
+    def _hide_command_visualizers(self) -> None:
+        """Hide global velocity-command arrows while recording a focused robot."""
+        command_manager = getattr(self.base_env, "command_manager", None)
+        command_terms = getattr(command_manager, "_terms", {})
+        self.command_debug_vis_was_enabled = any(
+            bool(getattr(getattr(term, "cfg", None), "debug_vis", False)) for term in command_terms.values()
+        )
+        if self.command_debug_vis_was_enabled:
+            command_manager.set_debug_vis(False)
+
+    def _restore_command_visualizers(self) -> None:
+        if not self.command_debug_vis_was_enabled:
+            return
+        self.base_env.command_manager.set_debug_vis(True)
+        self.command_debug_vis_was_enabled = False
 
     def _get_or_create_stream(self, label: str) -> _CameraStream:
         if label in self.streams:
@@ -185,13 +275,12 @@ class InProcessCurriculumVideoRecorder:
         return stream
 
     def _update_camera(self, stream: _CameraStream, env_id: int) -> None:
-        target = self._tile_center(env_id)
-        span = max(self.tile_size)
+        target = self._robot_target(env_id)
         eye = target + torch.tensor(
             (
-                -self.camera_distance_scale * span,
-                -self.camera_distance_scale * span,
-                self.camera_height_scale * span,
+                -self.camera_distance,
+                -self.camera_distance,
+                self.camera_height,
             ),
             dtype=torch.float32,
             device=self.base_env.device,
@@ -202,16 +291,8 @@ class InProcessCurriculumVideoRecorder:
             camera_prim_path=stream.camera_path,
         )
 
-    def _terrain_tile_size(self) -> tuple[float, float]:
-        terrain = getattr(getattr(self.base_env, "scene", None), "terrain", None)
-        generator = getattr(getattr(terrain, "cfg", None), "terrain_generator", None)
-        size = getattr(generator, "size", None)
-        if size is None:
-            return (8.0, 8.0)
-        return (float(size[0]), float(size[1]))
-
-    def _tile_center(self, env_id: int) -> torch.Tensor:
-        target = self.base_env.scene.env_origins[env_id].clone()
+    def _robot_target(self, env_id: int) -> torch.Tensor:
+        target = self.base_env.scene["robot"].data.root_pos_w[env_id].clone()
         target[2] += self.camera_target_height
         return target
 
