@@ -119,23 +119,19 @@ train_expert() {
   LEGGED_LAB_TERRAIN_SIZE=45,45 \
   LEGGED_LAB_TERRAIN_EDGE_BLEND_WIDTH=2.5 \
   LEGGED_LAB_TERRAIN_ALLOWED_HALF_EXTENT=20 \
-  LEGGED_LAB_CURRICULUM_VIDEO_PER_TERRAIN=1 \
-  LEGGED_LAB_CURRICULUM_VIDEO_ISOLATE_AGENTS=1 \
   LEGGED_LAB_MIXED_G1_AMP_CACHE="$MOTION_CACHE" \
   run_isaac scripts/rsl_rl/train.py \
     --task LeggedLab-Isaac-AMP-G1-SplitPolicy-HeightScan-TerrainCurriculum-v0 \
     --headless \
-    --num_envs 4096 \
+    --disable_fabric \
+    --num_envs 512 \
     --max_iterations 50000 \
     --warm_start \
     --warm_start_checkpoint "$WARM_START" \
     --experiment_name g1_split_policy_heightscan_experts \
     --run_name "${EXPERT_NAME}_seed0" \
     --logger wandb \
-    --log_project_name "$WANDB_PROJECT" \
-    --eval_video \
-    --eval_video_interval 4800 \
-    --eval_video_length 200
+    --log_project_name "$WANDB_PROJECT"
 }
 ```
 
@@ -144,6 +140,8 @@ Run the selected expert with:
 ```bash
 train_expert
 ```
+
+On base-station, keep `--disable_fabric` and `--num_envs 512`: the current RTX 5090/Isaac Sim build stalls before its first rollout at 4096 environments. The renderer also stalls physics after video capture starts, so do not add `--video`, `--eval_video`, or curriculum-video environment variables to a base-station training job. Capture evaluation video on a machine where the Isaac renderer is known to work.
 
 For hosted Weights & Biases logging, authenticate once on the training machine before launching an expert:
 
