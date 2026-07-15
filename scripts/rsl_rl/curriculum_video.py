@@ -12,7 +12,7 @@ import torch
 class _CameraStream:
     label: str
     camera_path: str
-    render_product_path: str
+    render_product: object
     annotator: object
 
 
@@ -71,6 +71,7 @@ class InProcessCurriculumVideoRecorder:
         self.active_writers: dict[str, object] = {}
         self.active_env_ids: dict[str, int] = {}
         self.active_paths: dict[str, str] = {}
+        self.frames_written: dict[str, int] = {}
         self.hidden_env_ids: torch.Tensor | None = None
         self.command_debug_vis_was_enabled = False
 
@@ -111,6 +112,7 @@ class InProcessCurriculumVideoRecorder:
         self.active_env_ids = selected_envs
         self.active_paths.clear()
         self.active_writers.clear()
+        self.frames_written.clear()
         self._isolate_selected_agents()
         self._hide_command_visualizers()
 
@@ -121,19 +123,24 @@ class InProcessCurriculumVideoRecorder:
             video_path = os.path.join(capture_dir, f"{label}.mp4")
             self.active_paths[label] = video_path
             self.active_writers[label] = imageio.get_writer(video_path, fps=self._fps(), macro_block_size=1)
+            self.frames_written[label] = 0
             self._update_camera(stream, selected_envs[label])
 
-        print(f"[INFO]: Recording curriculum videos at step {self.global_step}: {selected_envs}")
+        print(f"[INFO]: Recording curriculum videos at step {self.global_step}: {selected_envs}", flush=True)
 
     def _finish_capture(self) -> None:
+        empty_labels = [label for label, count in self.frames_written.items() if count == 0]
         self._close_writers()
         self._log_wandb_videos()
         self._restore_agent_visibility()
         self._restore_command_visualizers()
-        print(f"[INFO]: Finished curriculum videos for step {self.global_step - self.capture_step + 1}.")
+        if empty_labels:
+            print(f"[WARN]: Curriculum video capture wrote zero frames for: {empty_labels}", flush=True)
+        print(f"[INFO]: Finished curriculum videos for step {self.global_step - self.capture_step + 1}.", flush=True)
         self.active_capture = False
         self.active_env_ids.clear()
         self.active_paths.clear()
+        self.frames_written.clear()
         self.capture_step = 0
 
     def _close_writers(self) -> None:
@@ -154,6 +161,7 @@ class InProcessCurriculumVideoRecorder:
             if frame.shape[-1] > 3:
                 frame = frame[:, :, :3]
             writer.append_data(frame)
+            self.frames_written[label] += 1
 
     def _select_envs(self) -> dict[str, int]:
         terrain = getattr(getattr(self.base_env, "scene", None), "terrain", None)
@@ -250,25 +258,23 @@ class InProcessCurriculumVideoRecorder:
         if label in self.streams:
             return self.streams[label]
 
-        import isaaclab.sim as sim_utils
+        import isaacsim.core.utils.prims as prim_utils
         import omni.replicator.core as rep
         from pxr import UsdGeom
 
         camera_path = f"/World/CurriculumVideo/{label}_camera"
-        cam_prim = sim_utils.create_prim(camera_path, prim_type="Camera")
+        cam_prim = prim_utils.create_prim(camera_path, prim_type="Camera")
         camera = UsdGeom.Camera(cam_prim)
         camera.CreateFocalLengthAttr().Set(22.0)
         camera.CreateClippingRangeAttr().Set((0.1, 1000.0))
-        render_product_path = rep.create.render_product(camera_path, resolution=self.resolution)
-        if not isinstance(render_product_path, str):
-            render_product_path = render_product_path.path
+        render_product = rep.create.render_product(camera_path, resolution=self.resolution)
         annotator = rep.AnnotatorRegistry.get_annotator("rgb", device="cpu")
-        annotator.attach(render_product_path)
+        annotator.attach([render_product])
 
         stream = _CameraStream(
             label=label,
             camera_path=camera_path,
-            render_product_path=render_product_path,
+            render_product=render_product,
             annotator=annotator,
         )
         self.streams[label] = stream

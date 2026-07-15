@@ -1402,6 +1402,12 @@ class G1SplitPolicyHeightScanTerrainCurriculumEnvCfg(G1SplitPolicyHeightScanEnvC
     def __post_init__(self):
         super().__post_init__()
         enable_five_stage_terrain_curriculum(self)
+        self.terminations.base_height.func = mdp.root_height_below_terrain
+        self.terminations.base_height.params = {
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg(HEIGHT_SCAN_SENSOR_NAME),
+            "minimum_clearance": float(os.environ.get("LEGGED_LAB_TERRAIN_MIN_ROOT_CLEARANCE", "0.2")),
+        }
         # Reference-state initialization is not terrain-height aware.
         self.events.reset_from_ref = None
 

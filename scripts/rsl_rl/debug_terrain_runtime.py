@@ -144,7 +144,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, _age
     )
 
     t0 = time.perf_counter()
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode=None)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.curriculum_video else None)
     if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
     base_env = env.unwrapped
