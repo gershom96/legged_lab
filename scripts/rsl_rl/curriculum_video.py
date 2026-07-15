@@ -316,6 +316,6 @@ class InProcessCurriculumVideoRecorder:
             return
         try:
             for label, path in self.active_paths.items():
-                self.logger.log_video(f"Video/curriculum/{label}", path, step=self.capture_iteration, fps=self._fps())
+                self.logger.log_video(f"Video/curriculum/{label}", path, fps=self._fps())
         except Exception as exc:
             print(f"[WARN]: Could not log curriculum videos to wandb: {exc}")
