@@ -47,6 +47,9 @@ parser.add_argument(
     help=argparse.SUPPRESS,
 )
 parser.add_argument(
+    "--disable_fabric", action="store_true", default=False, help="Disable Fabric and use USD I/O operations."
+)
+parser.add_argument(
     "--eval_force_terrain_level",
     type=int,
     default=None,
@@ -178,6 +181,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    if args_cli.disable_fabric:
+        env_cfg.sim.use_fabric = False
     agent_cfg.max_iterations = (
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
     )

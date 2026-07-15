@@ -104,6 +104,7 @@ export EXPERT_TERRAINS=pyramid_stairs,pyramid_stairs_inv
 export TERRAIN_DIFFICULTY=0.35,0.65
 export TERRAIN_NUM_COLS=4
 export MOTION_CACHE="$HOME/Documents/shared_datasets/legged_lab_g1_mixed_default_motionbricks_cache.pt"
+export WANDB_PROJECT=g1_split_policy_heightscan_experts
 ```
 
 Define this helper once in the same shell:
@@ -130,6 +131,8 @@ train_expert() {
     --warm_start_checkpoint "$WARM_START" \
     --experiment_name g1_split_policy_heightscan_experts \
     --run_name "${EXPERT_NAME}_seed0" \
+    --logger wandb \
+    --log_project_name "$WANDB_PROJECT" \
     --eval_video \
     --eval_video_interval 4800 \
     --eval_video_length 200
@@ -139,6 +142,22 @@ train_expert() {
 Run the selected expert with:
 
 ```bash
+train_expert
+```
+
+For hosted Weights & Biases logging, authenticate once on the training machine before launching an expert:
+
+```bash
+uv run wandb login
+```
+
+For the footholds expert, use the three discontinuous/depressed terrain families with six columns so each family occupies two columns:
+
+```bash
+EXPERT_NAME=footholds \
+EXPERT_TERRAINS=stepping_stones,gap,pit \
+TERRAIN_DIFFICULTY=0.55,1.00 \
+TERRAIN_NUM_COLS=6 \
 train_expert
 ```
 

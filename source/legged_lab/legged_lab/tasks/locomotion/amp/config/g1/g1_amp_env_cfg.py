@@ -20,6 +20,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.terrains import TerrainImporterCfg
+from isaaclab.terrains.height_field.utils import height_field_to_mesh
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
@@ -421,6 +422,43 @@ def _terrain_stage_difficulty_ranges(num_rows: int) -> tuple[tuple[float, float]
     ) * (num_rows - len(_G1_TERRAIN_STAGE_DIFFICULTY_RANGES))
 
 
+@height_field_to_mesh
+def _g1_gap_trench_height_field(difficulty: float, cfg: terrain_gen.HfTerrainBaseCfg) -> np.ndarray:
+    """Create a traversable trench ring without disconnected collision meshes."""
+    width_pixels = int(cfg.size[0] / cfg.horizontal_scale)
+    length_pixels = int(cfg.size[1] / cfg.horizontal_scale)
+    gap_width = cfg.gap_width_range[0] + difficulty * (cfg.gap_width_range[1] - cfg.gap_width_range[0])
+    gap_depth = cfg.gap_depth_range[0] + difficulty * (cfg.gap_depth_range[1] - cfg.gap_depth_range[0])
+
+    heights = np.zeros((width_pixels, length_pixels), dtype=np.int16)
+    gap_width_pixels = max(1, int(np.ceil(gap_width / cfg.horizontal_scale)))
+    platform_half_pixels = max(1, int(round(cfg.platform_width / (2.0 * cfg.horizontal_scale))))
+    depth_pixels = max(1, int(round(gap_depth / cfg.vertical_scale)))
+    center_x, center_y = width_pixels // 2, length_pixels // 2
+    outer_half_x = min(width_pixels // 2, platform_half_pixels + gap_width_pixels)
+    outer_half_y = min(length_pixels // 2, platform_half_pixels + gap_width_pixels)
+
+    heights[
+        center_x - outer_half_x : center_x + outer_half_x,
+        center_y - outer_half_y : center_y + outer_half_y,
+    ] = -depth_pixels
+    heights[
+        center_x - platform_half_pixels : center_x + platform_half_pixels,
+        center_y - platform_half_pixels : center_y + platform_half_pixels,
+    ] = 0
+    return heights
+
+
+@configclass
+class G1GapTrenchTerrainCfg(terrain_gen.HfTerrainBaseCfg):
+    """Height-field replacement for the unstable open-mesh gap terrain."""
+
+    function = _g1_gap_trench_height_field
+    gap_width_range: tuple[float, float] = MISSING
+    gap_depth_range: tuple[float, float] = (0.18, 0.30)
+    platform_width: float = 2.0
+
+
 def g1_five_stage_terrain_generator_cfg() -> FiveStageTerrainGeneratorCfg:
     """Build a conservative five-stage rough-terrain curriculum for G1."""
     stage_names = _terrain_stage_names()
@@ -485,7 +523,12 @@ def g1_five_stage_terrain_generator_cfg() -> FiveStageTerrainGeneratorCfg:
                 holes_depth=-0.30,
                 platform_width=2.0,
             ),
-            "gap": terrain_gen.MeshGapTerrainCfg(gap_width_range=(0.08, 0.35), platform_width=2.0),
+            "gap": G1GapTrenchTerrainCfg(
+                gap_width_range=(0.08, 0.35),
+                gap_depth_range=(0.18, 0.30),
+                platform_width=2.0,
+                border_width=0.25,
+            ),
             "pit": terrain_gen.MeshPitTerrainCfg(pit_depth_range=(0.05, 0.25), platform_width=2.5, double_pit=False),
             "rails": terrain_gen.MeshRailsTerrainCfg(
                 rail_thickness_range=(0.05, 0.16),
