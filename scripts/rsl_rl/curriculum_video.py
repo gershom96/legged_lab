@@ -311,13 +311,11 @@ class InProcessCurriculumVideoRecorder:
             return
         if getattr(self.logger, "logger_type", "").lower() != "wandb":
             return
+        if not hasattr(self.logger, "log_video"):
+            print("[WARN]: Could not log curriculum videos to wandb: logger has no log_video method.")
+            return
         try:
-            import wandb
-
             for label, path in self.active_paths.items():
-                wandb.log(
-                    {f"Video/curriculum/{label}": wandb.Video(path, fps=self._fps(), format="mp4")},
-                    step=self.capture_iteration,
-                )
+                self.logger.log_video(f"Video/curriculum/{label}", path, step=self.capture_iteration, fps=self._fps())
         except Exception as exc:
             print(f"[WARN]: Could not log curriculum videos to wandb: {exc}")
