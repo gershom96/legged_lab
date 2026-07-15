@@ -123,8 +123,7 @@ train_expert() {
   run_isaac scripts/rsl_rl/train.py \
     --task LeggedLab-Isaac-AMP-G1-SplitPolicy-HeightScan-TerrainCurriculum-v0 \
     --headless \
-    --disable_fabric \
-    --num_envs 512 \
+    --num_envs 4096 \
     --max_iterations 50000 \
     --warm_start \
     --warm_start_checkpoint "$WARM_START" \
@@ -141,7 +140,7 @@ Run the selected expert with:
 train_expert
 ```
 
-On base-station, keep `--disable_fabric` and `--num_envs 512`: the current RTX 5090/Isaac Sim build stalls before its first rollout at 4096 environments. The renderer also stalls physics after video capture starts, so do not add `--video`, `--eval_video`, or curriculum-video environment variables to a base-station training job. Capture evaluation video on a machine where the Isaac renderer is known to work.
+On base-station, use Fabric (the default) with `--num_envs 4096`. The original open-mesh gap terrain stalled this configuration; the height-field trench replacement removes that stall. `--disable_fabric` is a diagnostic fallback only. The renderer/video path still needs a separate smoke test, so do not add `--video`, `--eval_video`, or curriculum-video environment variables to a long base-station training job yet.
 
 For hosted Weights & Biases logging, authenticate once on the training machine before launching an expert:
 
