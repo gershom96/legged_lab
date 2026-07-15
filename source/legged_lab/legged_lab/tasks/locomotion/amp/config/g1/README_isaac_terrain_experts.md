@@ -97,6 +97,21 @@ The training command prints the resolved Isaac Lab, Legged Lab, and RSL-RL impor
 
 Choose a trained flat split-policy checkpoint as the warm start. `EXPERT_TERRAINS` is a comma-separated group; the generator places the listed families in equal proportions across the tile columns.
 
+## Selected Checkpoints
+
+These are the checkpoints selected for the terrain-expert workflow. Both use the
+same split-policy height-scan layout, and their model parameter keys and shapes
+were verified compatible on 2026-07-15.
+
+| Purpose | Checkpoint |
+| --- | --- |
+| Flat-ground warm start for every new terrain expert | `/home/gershom/Documents/gershom96/legged_lab/logs/rsl_rl/g1_split_policy_heightscan/2026-07-09_14-54-49/model_4400.pt` |
+| Continuous uneven-ground expert snapshot | `/home/gershom/Documents/gershom96/legged_lab/logs/rsl_rl/g1_split_policy_heightscan/2026-07-14_15-35-11_continuous_seed0_video_cache/model_20400.pt` |
+
+Use the **flat-ground** checkpoint for `--warm_start_checkpoint` when creating a
+new expert. Use the continuous checkpoint only to resume or evaluate that
+continuous expert; it is not the common initialization for the other experts.
+
 ```bash
 export WARM_START=/absolute/path/to/model_XXXX.pt
 export EXPERT_NAME=stairs
@@ -105,6 +120,7 @@ export TERRAIN_DIFFICULTY=0.35,0.65
 export TERRAIN_NUM_COLS=4
 export MOTION_CACHE="$HOME/Documents/shared_datasets/legged_lab_g1_mixed_default_motionbricks_cache.pt"
 export WANDB_PROJECT=g1_split_policy_heightscan_experts
+export TRAIN_VIDEO_ARGS=""
 ```
 
 Define this helper once in the same shell:
@@ -130,7 +146,8 @@ train_expert() {
     --experiment_name g1_split_policy_heightscan_experts \
     --run_name "${EXPERT_NAME}_seed0" \
     --logger wandb \
-    --log_project_name "$WANDB_PROJECT"
+    --log_project_name "$WANDB_PROJECT" \
+    $TRAIN_VIDEO_ARGS
 }
 ```
 
@@ -140,7 +157,7 @@ Run the selected expert with:
 train_expert
 ```
 
-On base-station, use Fabric (the default) with `--num_envs 4096`. The original open-mesh gap terrain stalled this configuration; the height-field trench replacement removes that stall. `--disable_fabric` is a diagnostic fallback only. The renderer/video path still needs a separate smoke test, so do not add `--video`, `--eval_video`, or curriculum-video environment variables to a long base-station training job yet.
+On base-station, use Fabric (the default) with `--num_envs 4096`. The original open-mesh gap terrain stalled this configuration; the height-field trench replacement removes that stall. `--disable_fabric` is a diagnostic fallback only. The renderer/video path still needs a separate smoke test on each machine; enable `TRAIN_VIDEO_ARGS` only after a short video smoke test succeeds.
 
 For hosted Weights & Biases logging, authenticate once on the training machine before launching an expert:
 
@@ -156,6 +173,30 @@ EXPERT_TERRAINS=stepping_stones,gap,pit \
 TERRAIN_DIFFICULTY=0.55,1.00 \
 TERRAIN_NUM_COLS=6 \
 train_expert
+```
+
+For the slopes expert, use the two complementary slope families with four columns so each family occupies two columns:
+
+```bash
+EXPERT_NAME=slopes \
+EXPERT_TERRAINS=pyramid_slope,pyramid_slope_inv \
+TERRAIN_DIFFICULTY=0.35,0.60 \
+TERRAIN_NUM_COLS=4 \
+train_expert
+```
+
+On `zhe-station`, start slopes from the flat split-policy checkpoint copied to:
+
+```bash
+export WARM_START="$HOME/gershom96/legged_lab/logs/warm_starts/g1_split_policy_heightscan_model_4400.pt"
+```
+
+If the local renderer smoke test succeeds, record curriculum videos during training with:
+
+```bash
+export LEGGED_LAB_CURRICULUM_VIDEO_PER_TERRAIN=1
+export LEGGED_LAB_CURRICULUM_VIDEO_ISOLATE_AGENTS=1
+export TRAIN_VIDEO_ARGS="--eval_video --eval_video_interval 2000 --eval_video_length 200"
 ```
 
 `--warm_start` loads the matching actor and critic only. It deliberately starts PPO optimizer state, the AMP discriminator, discriminator normalizer, and discriminator optimizer fresh for the new terrain distribution. Use `--resume --load_run ... --checkpoint ...` only to continue the *same* terrain expert after interruption.
